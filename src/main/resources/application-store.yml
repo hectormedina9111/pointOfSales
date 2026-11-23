@@ -1,0 +1,5 @@
+pos:
+  node:
+    role: store
+    number: ${POS_NODE_NUMBER}
+    central-url: ${POS_CENTRAL_URL}
