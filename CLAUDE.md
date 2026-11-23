@@ -10,7 +10,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 
 ## Stack (no cambiar sin acordarlo)
 
-- Java 25, Spring Boot 4.1.1, Spring Modulith 2.1.1, jMolecules.
+- Java 25, Spring Boot 4.1.3, Spring Modulith 2.1.1, jMolecules.
 - Spring Web MVC (no WebFlux), Spring Data JPA, Spring Security con JWT (OAuth2 Resource Server).
 - PostgreSQL 17 o superior, migraciones con Flyway. Nunca `ddl-auto` distinto de `validate`.
 - MapStruct para DTOs, springdoc-openapi para Swagger.

@@ -65,6 +65,8 @@ services:
       POS_DB_URL: jdbc:postgresql://central-db:5432/pos
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+      POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
+      POS_ADMIN_INITIAL_PASSWORD: ${POS_ADMIN_INITIAL_PASSWORD:-}
     ports:
       - "8080:8080"
     depends_on:
@@ -83,6 +85,7 @@ services:
       POS_DB_URL: jdbc:postgresql://store1-db:5432/pos
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+      POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
     ports:
       - "8081:8080"
     depends_on:
@@ -103,6 +106,7 @@ services:
       POS_DB_URL: jdbc:postgresql://store2-db:5432/pos
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+      POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
     ports:
       - "8082:8080"
     depends_on:
