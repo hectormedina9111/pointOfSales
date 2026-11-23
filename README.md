@@ -53,6 +53,14 @@ Comprobaciones rápidas:
 
 Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la VM, en `/vagrant`).
 
+## Inicio de sesión
+
+- `POST /api/v1/auth/login` con `{"username": "...", "password": "..."}` devuelve `accessToken` (válido 15 minutos), `refreshToken`, `expiresIn` y `mustChangePassword`. Las rutas protegidas reciben el token en `Authorization: Bearer <accessToken>`.
+- `POST /api/v1/auth/refresh` cambia el refresh token por uno nuevo (el anterior queda revocado). `POST /api/v1/auth/logout` revoca el refresh token.
+- El usuario inicial es `admin`, creado solo en la central. Su contraseña se toma de `POS_ADMIN_INITIAL_PASSWORD`; si la variable está vacía, se genera en el primer arranque y se muestra una sola vez en el log de la central (`docker compose logs central-api`).
+- Con `mustChangePassword` en `true`, el resto de endpoints responde 403 hasta que el usuario cambie su contraseña con `POST /api/v1/me/password` (`{"currentPassword": "...", "newPassword": "..."}`, mínimo 10 caracteres).
+- `POS_JWT_SECRET` firma los tokens y debe tener al menos 32 caracteres. Los valores de `.env.example` son solo para desarrollo.
+
 ## Simular un corte de internet
 
 Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):

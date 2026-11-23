@@ -34,9 +34,9 @@ class SystemInfoControllerTest {
     }
 
     @Test
-    void unknownRouteReturnsProblemDetail() throws Exception {
+    void anonymousRequestToUnknownRouteIsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/v1/does-not-exist"))
-                .andExpect(status().isNotFound())
+                .andExpect(status().isUnauthorized())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON));
     }
 }
