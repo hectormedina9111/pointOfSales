@@ -1,0 +1,11 @@
+# Estado local del control de uso de Claude Code
+.claude/usage/
+.claude/settings.local.json
+
+# Secretos y entorno local
+.env
+
+# Build
+target/
+.vagrant/
+*.log
