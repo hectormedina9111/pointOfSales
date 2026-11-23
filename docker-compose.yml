@@ -1,0 +1,126 @@
+# Entorno local completo: una central y dos tiendas, cada una con su base de datos.
+# Cada base de datos solo es accesible desde la red de su propio nodo.
+# La red "wan" simula internet: las tiendas llegan a la central por ahí.
+
+services:
+  central-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: ${POS_DB_USER:-pos}
+      POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "5432:5432"
+    volumes:
+      - central-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - central-lan
+
+  store1-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: ${POS_DB_USER:-pos}
+      POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "5433:5432"
+    volumes:
+      - store1-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - store1-lan
+
+  store2-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pos
+      POSTGRES_USER: ${POS_DB_USER:-pos}
+      POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "5434:5432"
+    volumes:
+      - store2-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - store2-lan
+
+  central-api:
+    build: .
+    image: medinasystems/pos:dev
+    environment:
+      SPRING_PROFILES_ACTIVE: central
+      POS_DB_URL: jdbc:postgresql://central-db:5432/pos
+      POS_DB_USER: ${POS_DB_USER:-pos}
+      POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "8080:8080"
+    depends_on:
+      central-db:
+        condition: service_healthy
+    networks:
+      - wan
+      - central-lan
+
+  store1-api:
+    image: medinasystems/pos:dev
+    environment:
+      SPRING_PROFILES_ACTIVE: store
+      POS_NODE_NUMBER: "1"
+      POS_CENTRAL_URL: http://central-api:8080
+      POS_DB_URL: jdbc:postgresql://store1-db:5432/pos
+      POS_DB_USER: ${POS_DB_USER:-pos}
+      POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "8081:8080"
+    depends_on:
+      central-api:
+        condition: service_started
+      store1-db:
+        condition: service_healthy
+    networks:
+      - wan
+      - store1-lan
+
+  store2-api:
+    image: medinasystems/pos:dev
+    environment:
+      SPRING_PROFILES_ACTIVE: store
+      POS_NODE_NUMBER: "2"
+      POS_CENTRAL_URL: http://central-api:8080
+      POS_DB_URL: jdbc:postgresql://store2-db:5432/pos
+      POS_DB_USER: ${POS_DB_USER:-pos}
+      POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
+    ports:
+      - "8082:8080"
+    depends_on:
+      central-api:
+        condition: service_started
+      store2-db:
+        condition: service_healthy
+    networks:
+      - wan
+      - store2-lan
+
+volumes:
+  central-db-data:
+  store1-db-data:
+  store2-db-data:
+
+networks:
+  wan:
+  central-lan:
+  store1-lan:
+  store2-lan:

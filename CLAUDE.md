@@ -82,6 +82,14 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - Cambios pequeños y enfocados; un commit por paso lógico, con mensaje en inglés en modo imperativo (`Add product search by barcode`).
 - Si una decisión no está en el plan o lo contradice, preguntar antes de implementarla y, una vez decidida, actualizar `docs/plan.md`.
 
+## Flujo de Git
+
+- Nunca hacer push directo a `main`.
+- Cada paso del MVP va en su propia rama `feature/step-N-<nombre>`.
+- Al terminar un paso: push de la rama y Pull Request hacia `main`, con descripción de los requerimientos cubiertos y cómo probarlos.
+- El CI (GitHub Actions) debe pasar antes de unir el PR.
+- No empezar el siguiente paso hasta que el PR esté revisado y unido a `main`.
+
 ## Límite de uso del plan
 
 - El trabajo no debe pasar del **70 %** del límite de 5 horas ni del límite semanal del plan.
@@ -91,7 +99,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 
 ## Entorno de desarrollo
 
-- Se desarrolla en **Windows**. El proyecto está en `C:\Users\hector.giron\repositorios\medinasystems-pos`.
+- Se desarrolla en **Windows**. El proyecto está en `C:\Users\hector.giron\repositorios\pointOfSales` (clon de https://github.com/hectormedina9111/pointOfSales).
 - En el equipo: Git (con Git Bash), VirtualBox, Vagrant, JDK 25, Docker Desktop y Claude Code.
 - Claude Code compila y ejecuta las pruebas en el equipo (Testcontainers usa Docker Desktop).
 - La máquina virtual de Vagrant (Ubuntu) se usa para levantar el entorno completo: central y dos tiendas.
