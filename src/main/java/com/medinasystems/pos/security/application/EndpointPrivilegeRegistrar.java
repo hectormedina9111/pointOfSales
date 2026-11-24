@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,10 +24,15 @@ import com.medinasystems.pos.security.infrastructure.PrivilegeRepository;
 import com.medinasystems.pos.security.infrastructure.RoleRepository;
 
 /**
- * At every startup: creates an ENDPOINT privilege for each controller route that lacks one,
- * then grants every ENDPOINT privilege to ADMIN. Runs on every profile.
+ * Central node, at every startup: creates an ENDPOINT privilege for each controller route that lacks one,
+ * then grants every ENDPOINT privilege to ADMIN.
+ *
+ * <p>Central only: privileges and roles are master data that the stores receive by replication. If a store
+ * created its own rows, their ids would differ from the central ones and the replicated rows would collide on
+ * the unique code.
  */
 @Component
+@Profile("central")
 public class EndpointPrivilegeRegistrar implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(EndpointPrivilegeRegistrar.class);

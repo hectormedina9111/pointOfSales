@@ -146,6 +146,12 @@
       "initialValue": "http://localhost:8081",
       "currentValue": "http://localhost:8081",
       "secret": false
+    },
+    {
+      "key": "storeAccessToken",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": true
     }
   ]
 }

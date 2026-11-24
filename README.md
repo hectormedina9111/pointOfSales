@@ -119,9 +119,34 @@ Cada tienda tiene su propio servidor y se activa ante la central una sola vez. L
 
 **Token de la tienda.** Las llamadas de la tienda a la central llevan la cabecera `X-Store-Token`. La central guarda solo su SHA-256; la tienda lo guarda en claro en `store_identity`, en su propia base de datos local.
 
+## Sincronización
+
+La central es la dueña de los datos maestros (países, empresa, sucursales, usuarios, roles, privilegios, catálogo, impuestos y listas de precios). Cada tienda recibe una copia de solo lectura.
+
+**Cómo funciona.**
+
+- Cada cambio en un dato maestro se anota en la tabla `sync_change_log` de la central dentro de la misma transacción, con un trigger de PostgreSQL. Así no se puede modificar un dato sin dejar el registro.
+- Cada 30 segundos, la tienda pregunta a la central qué cambió desde la última versión que aplicó, aplica los cambios en una sola transacción y los confirma. Si la central no responde, la tienda sigue vendiendo con sus datos locales y reintenta en el siguiente ciclo.
+- La primera vez, antes de los cambios, la tienda carga una copia completa de los datos maestros (la carga inicial). Si esa carga se interrumpe, se vuelve a empezar en el siguiente ciclo.
+- Cada ciclo envía un latido a la central con la versión aplicada. Una tienda sin latido durante dos minutos aparece como fuera de sincronía en el panel.
+
+**Cómo verlo.**
+
+- Panel: `GET /api/v1/store-nodes` en la central. Cada tienda muestra `latestVersion` (la versión de la central), `lastDownloadVersion` (la que confirmó la tienda), `pendingChanges` (cuántos cambios le faltan), `connected` y `syncState` (`ACTIVE`, `OUT_OF_SYNC`, `PENDING` o `DISABLED`).
+- Estado de la tienda: `GET /api/v1/sync/status` en la tienda muestra `lastAppliedVersion`, `snapshotCompletedAt`, `lastSyncAt` y `lastSyncError`. Si la última sincronización falló, el error aparece ahí y en el log de la tienda (sin el token).
+- Intervalo: la propiedad `pos.sync.interval` (30 segundos por defecto).
+
+**Prueba de corte.** Con el entorno local levantado:
+
+1. `scripts/simulate-outage.sh store2 down`: la tienda 2 pierde la conexión con la central, pero sigue funcionando.
+2. En la central, cambia el precio de un producto (por ejemplo, con la colección Hoppscotch, carpeta 5 o 6).
+3. En la tienda 1, `GET /api/v1/products/{id}/price` muestra el precio nuevo en unos segundos. En la tienda 2 sigue el precio anterior.
+4. En el panel de la central, la tienda 2 aparece como `OUT_OF_SYNC` con `pendingChanges` mayor que cero (después de dos minutos sin latido).
+5. `scripts/simulate-outage.sh store2 up`: en el siguiente ciclo, la tienda 2 aplica el cambio y `pendingChanges` vuelve a cero.
+
 ## Simular un corte de internet
 
-Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):
+Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar). La prueba completa de sincronización está en la sección anterior:
 
 ```bash
 scripts/simulate-outage.sh store1 down

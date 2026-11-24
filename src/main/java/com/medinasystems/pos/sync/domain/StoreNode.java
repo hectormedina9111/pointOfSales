@@ -30,6 +30,8 @@ public class StoreNode extends AuditableEntity {
     /** Node numbers are stored as SMALLINT. */
     public static final int MAX_NODE_NUMBER = Short.MAX_VALUE;
     static final Duration ACTIVATION_CODE_TTL = Duration.ofHours(24);
+    /** A store whose last heartbeat is older than this is shown as out of sync. */
+    static final Duration CONNECTED_WINDOW = Duration.ofMinutes(2);
 
     @Column(name = "node_number", nullable = false, unique = true)
     private short nodeNumber;
@@ -160,6 +162,34 @@ public class StoreNode extends AuditableEntity {
 
     public boolean isRevoked() {
         return credentialRevokedAt != null;
+    }
+
+    /** A store is connected when its last heartbeat is recent. Used for the sync panel. */
+    public boolean isConnected(Instant now) {
+        return lastHeartbeatAt != null && !lastHeartbeatAt.isBefore(now.minus(CONNECTED_WINDOW));
+    }
+
+    /** Versions the store still has to download: the central node's latest minus the last one it confirmed. */
+    public long pendingChanges(long latestVersion) {
+        long downloaded = lastDownloadVersion == null ? 0L : lastDownloadVersion;
+        return Math.max(0L, latestVersion - downloaded);
+    }
+
+    /** The store confirmed it applied changes up to {@code version}. The version only goes up. */
+    public void acknowledgeDownload(long version) {
+        if (lastDownloadVersion == null || version > lastDownloadVersion) {
+            this.lastDownloadVersion = version;
+        }
+    }
+
+    /** Records a heartbeat: the store's applied version, app version, and what it still has to upload. */
+    public void recordHeartbeat(Instant now, long appliedVersion, String appVersion, int pendingUploadCount,
+                                Instant oldestPendingAt) {
+        this.lastHeartbeatAt = now;
+        this.appVersion = appVersion == null ? null : appVersion.substring(0, Math.min(appVersion.length(), 20));
+        this.pendingUploadCount = Math.max(0, pendingUploadCount);
+        this.oldestPendingAt = oldestPendingAt;
+        acknowledgeDownload(appliedVersion);
     }
 
     public String getCredentialHash() {

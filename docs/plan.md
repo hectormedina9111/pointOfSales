@@ -1377,3 +1377,86 @@ Alcance: registro de tiendas en la central, activación, credenciales de la tien
 - No se compiló ni se ejecutó: el entorno de esta sesión no tiene Maven ni las dependencias. Solo se comprobó la sintaxis con `javac`.
 - No hay pruebas, como exige la primera etapa del proyecto.
 - Falta la réplica de datos maestros (`sync_change_log`, descarga inicial), el latido (que asignará `OUT_OF_SYNC`) y la subida de documentos.
+
+### Decisiones de implementación: paso 6B (réplica)
+
+Alcance: la central registra los cambios de datos maestros, sirve la carga inicial y los cambios, y cada tienda los aplica cada 30 segundos. Las tiendas todavía no suben documentos.
+
+**Captura de cambios (`V9__sync_change_log.sql`)**
+
+- `sync_change_log` sigue el plan. La clave es `version BIGINT GENERATED ALWAYS AS IDENTITY`. Es de solo anexar: no tiene columnas de auditoría.
+- Los cambios se capturan con triggers `AFTER INSERT OR UPDATE OR DELETE` (función `sync_log_change()`), no desde el código de la aplicación. Así cada cambio queda en el registro dentro de la misma transacción que lo modifica, incluso si el cambio viene de un `UPDATE` directo en la base.
+- Las tablas principales registran su propia fila (`TG_ARGV`: entidad, columna del id, `main`). Las hijas (`user_role`, `user_branch`, `role_privilege`) registran un `UPSERT` de su entidad padre: el cambio se reenvía completo, con todos sus hijos.
+- En una tienda, la función no registra nada. La conexión se marca con `SET pos.node_role = 'store'` (`spring.datasource.hikari.connection-init-sql` en `application-store.yml`), y la aplicación de la réplica activa `pos.sync_apply = 'on'`.
+- La migración inserta un `UPSERT` por cada fila que ya existe en las tablas principales, para que una tienda que nunca sincronizó reciba también los datos anteriores.
+- `branch_id` queda en `NULL` en todas las filas: todo se replica a todas las tiendas. El filtrado por sucursal se hará después, sin cambiar el esquema.
+
+**Registro de tablas (`sync/domain/SyncTables`)**
+
+- Orden de las tablas principales: `country`, `company`, `role`, `privilege`, `app_user`, `branch`, `category`, `unit_of_measure`, `tax`, `product`, `product_tax`, `price_list`, `price_list_item`. Después van las hijas: `user_role`, `user_branch`, `role_privilege`.
+- Los nombres son constantes en el código. Lo que llega en una petición solo se compara contra el registro, nunca entra al SQL.
+
+**Formato de las filas**
+
+- Cada fila viaja como texto JSON (`row_to_json` en la central). En las respuestas, la fila es un string dentro del JSON, así que la central no las convierte a tipos Java y la tienda se las pasa a PostgreSQL tal cual.
+- La tienda escribe con `json_populate_record` y `json_populate_recordset`: PostgreSQL hace el mapeo de columnas. Los nombres de columnas salen de `information_schema`, y las tablas del registro.
+
+**Aplicación en la tienda (`ReplicaWriter`)**
+
+- Cada escritura corre en una transacción que empieza con `SET LOCAL session_replication_role = replica`. Eso desactiva las comprobaciones de llaves foráneas y los triggers solo en esa transacción, así que el orden de las filas no importa dentro de un lote.
+- Requiere que el usuario de la base pueda cambiar `session_replication_role`. En Docker es el propietario de la base, que es superusuario. Si algún día se usa un usuario sin ese permiso, la réplica falla con error explícito.
+- Upsert de una fila principal: `INSERT ... SELECT r.* FROM json_populate_recordset(...) ON CONFLICT (id) DO UPDATE SET` con todas las columnas menos `id`.
+- Hijos de una entidad: se borran los del id de la entidad y se insertan los que llegaron. Si no llegó ninguno, quedan en cero.
+- Borrado de una entidad: se borran primero sus hijos y luego la fila.
+- Un cambio y la versión aplicada se guardan en una sola transacción: si algo falla, ni las filas ni la versión quedan a medias.
+
+**Carga inicial (snapshot)**
+
+1. `GET /api/v1/sync/snapshot/version` da la versión `v0`.
+2. La tienda vacía todas las tablas replicadas, hijas primero y luego principales en orden inverso. Esto también borra lo que la tienda creó en la 6A (ver abajo).
+3. Por cada tabla del registro, en orden, pide páginas de 1000 con `afterId`. Para tablas principales la página es por id. Para hijas, la página es por id padre distinto: se traen los hijos de esos padres y se reemplazan en la tienda.
+4. Al terminar, `last_applied_version = v0` y `snapshot_completed_at` se llena. Los cambios posteriores a `v0` se aplican después, así que cualquier cambio hecho durante la carga se recibe de nuevo y no se pierde (las escrituras son idempotentes).
+5. Si la carga se interrumpe, `snapshot_completed_at` queda en `NULL` y el siguiente ciclo vuelve a empezar desde el paso 2.
+
+**Ciclo de sincronización (`StoreReplicator`)**
+
+- `@Scheduled(fixedDelay = pos.sync.interval, initialDelay = pos.sync.initial-delay)`, 30 segundos y 15 segundos por defecto. Solo en el perfil `store`; `@EnableScheduling` vive en `SyncSchedulingConfig`, también solo en `store`.
+- Cada ciclo: carga inicial si falta; luego latido (`POST /api/v1/sync/heartbeat` con la versión aplicada); luego cambios página por página (`GET /api/v1/sync/changes?sinceVersion=`, 500 por página), aplicación transaccional y `POST /api/v1/sync/ack`, mientras `hasMore` sea verdadero.
+- Errores: se capturan, se guardan en `store_identity.last_sync_error` (máximo 500 caracteres) y se registran en el log con solo la clase de excepción y el mensaje. Nunca el token ni la petición. El siguiente ciclo reintenta.
+- La tienda nunca llama a la central desde una petición de usuario: las lecturas siguen funcionando si la central está caída.
+- El cliente tiene tiempos de espera (5 s para conectar, 30 s para leer), para que una conexión colgada no bloquee el ciclo para siempre.
+
+**Central: endpoints de réplica (`SyncReplicationController`, solo perfil `central`)**
+
+- Todos usan el token de la tienda (`X-Store-Token`, filtro existente) y no requieren privilegio: `EndpointPrivileges` los exime, igual que `/sync/ping`.
+- `GET /snapshot/version`, `GET /snapshot?table=&afterId=&limit=` (máximo 2000), `GET /changes?sinceVersion=&limit=` (500 por defecto), `POST /ack`, `POST /heartbeat`.
+- `/changes` manda, por cada entidad cambiada, su estado actual y no el historial: una entidad cambiada varias veces viaja una sola vez. Si la fila ya no existe, el cambio se manda como `DELETE`.
+- Un nombre de tabla que no está en el registro responde 422 `UNKNOWN_SYNC_TABLE`.
+- El heartbeat actualiza `last_heartbeat_at`, `app_version`, `pending_upload_count`, `oldest_pending_at` y `last_download_version` (solo sube). Responde la versión más reciente de la central.
+
+**Panel de tiendas**
+
+- `StoreNodeView` agrega `latestVersion`, `pendingChanges` (versión de la central menos `lastDownloadVersion`, nunca negativa), `connected` (latido en los últimos dos minutos) y `syncState`.
+- `syncState` se calcula, no se guarda: `DISABLED` si la tienda fue revocada, `PENDING` si nunca se activó, `OUT_OF_SYNC` si no está conectada, `ACTIVE` en otro caso.
+
+**Registrador de privilegios solo en la central**
+
+- `EndpointPrivilegeRegistrar` pasa a `@Profile("central")`. Los privilegios y roles son datos maestros que llegan por réplica: si una tienda creara los suyos, sus ids no coincidirían con los de la central y las filas replicadas chocarían en el `code` único.
+- `AdminBootstrap` y `DevActivationCodeSeeder` ya eran solo de la central. `StoreActivator` solo activa y ajusta secuencias.
+
+**Tienda creada con la 6A**
+
+- La 6A corrió el registrador en la tienda, así que una tienda ya activada tiene privilegios y grants con ids locales. La carga inicial borra las tablas replicadas antes de cargar, y por eso esas filas desaparecen. No hay datos de usuario creados en la tienda que se pierdan, porque en esta etapa la tienda todavía no crea documentos.
+
+**Límites conocidos (no resueltos en 6B)**
+
+- Orden de confirmación: un cambio con versión 5 puede confirmarse después de otro con versión 6. Si la tienda pide cambios después de la versión 6, no ve el 5. Lo cubriría una ventana de solape al pedir cambios (volver a pedir unas versiones antes); se deja para cuando la carga de la tienda sea crítica.
+- Unicidad durante la aplicación: si en un lote se intercambian valores de una columna única (por ejemplo, el código de dos productos), la aplicación puede chocar con la unicidad aunque el resultado final sea válido. No pasa con los datos actuales.
+- Crecimiento del registro: `sync_change_log` crece sin límite. Se podará cuando todas las tiendas hayan pasado de una versión.
+- Sin compresión en el cliente: el cliente de la tienda no envía `Accept-Encoding` (`SimpleClientHttpRequestFactory` no lo agrega), así que el servidor responde sin gzip aunque `server.compression` esté activo. Se agregará cuando el volumen lo justifique.
+
+**Pendiente o no verificado**
+
+- No se compiló: esta sesión no tiene Maven ni las dependencias. Solo se comprobó la sintaxis con `javac` (ningún error de sintaxis; los errores de símbolos son las dependencias de Spring que faltan).
+- No hay pruebas, como exige la primera etapa del proyecto.
+- Falta probar en la VM: el corte de la tienda 2, el cambio de precio y el regreso con `scripts/simulate-outage.sh`.

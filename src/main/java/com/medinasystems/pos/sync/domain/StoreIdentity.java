@@ -47,6 +47,12 @@ public class StoreIdentity extends AuditableEntity {
     @Column(name = "snapshot_completed_at")
     private Instant snapshotCompletedAt;
 
+    @Column(name = "last_sync_at")
+    private Instant lastSyncAt;
+
+    @Column(name = "last_sync_error", length = 500)
+    private String lastSyncError;
+
     protected StoreIdentity() {
     }
 
@@ -104,5 +110,38 @@ public class StoreIdentity extends AuditableEntity {
 
     public Instant getSnapshotCompletedAt() {
         return snapshotCompletedAt;
+    }
+
+    public Instant getLastSyncAt() {
+        return lastSyncAt;
+    }
+
+    public String getLastSyncError() {
+        return lastSyncError;
+    }
+
+    /** The initial load finished: everything up to {@code version} is in the local database. */
+    public void completeSnapshot(long version, Instant now) {
+        this.lastAppliedVersion = version;
+        this.snapshotCompletedAt = now;
+    }
+
+    /** Moves the applied version forward. It never goes back. */
+    public void advanceAppliedVersion(long version) {
+        if (version > lastAppliedVersion) {
+            this.lastAppliedVersion = version;
+        }
+    }
+
+    /** A sync cycle finished without errors. */
+    public void recordSyncSuccess(Instant now) {
+        this.lastSyncAt = now;
+        this.lastSyncError = null;
+    }
+
+    /** A sync cycle failed. The message is cut to fit the column and never carries the token. */
+    public void recordSyncError(Instant now, String message) {
+        this.lastSyncAt = now;
+        this.lastSyncError = message == null ? "Unknown error" : message.substring(0, Math.min(message.length(), 500));
     }
 }

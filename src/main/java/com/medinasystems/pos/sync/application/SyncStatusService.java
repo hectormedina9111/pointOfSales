@@ -21,14 +21,15 @@ public class SyncStatusService {
 
     public SyncStatusView status() {
         if (node.isCentral()) {
-            return new SyncStatusView("CENTRAL", false, null, null, null, null, null, null, null, null);
+            return new SyncStatusView("CENTRAL", false, null, null, null, null, null, null, null, null, null, null);
         }
         return identities.findFirstByOrderByIdAsc()
                 .map(identity -> new SyncStatusView("STORE", true, identity.getNodeNumber(),
                         identity.getStoreNodeId(), identity.getBranchId(), identity.getIdRangeStart(),
                         identity.getIdRangeEnd(), identity.getLastAppliedVersion(),
-                        identity.getSnapshotCompletedAt(), identity.getCentralUrl()))
+                        identity.getSnapshotCompletedAt(), identity.getCentralUrl(), identity.getLastSyncAt(),
+                        identity.getLastSyncError()))
                 .orElseGet(() -> new SyncStatusView("STORE", false, node.number(), null, null, null, null, null,
-                        null, node.centralUrl()));
+                        null, node.centralUrl(), null, null));
     }
 }
