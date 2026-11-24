@@ -73,7 +73,7 @@ services:
       # Solo local: códigos de activación de desarrollo para las tiendas 1 y 2.
       POS_DEV_ACTIVATION_CODES: ${POS_DEV_ACTIVATION_CODES:-1:STORE1-DEV-CODE,2:STORE2-DEV-CODE}
       # Web de la central: la única web que puede llamar a esta API.
-      POS_CORS_ALLOWED_ORIGINS: "http://${POS_CENTRAL_IP:-192.168.56.10}"
+      POS_CORS_ALLOWED_ORIGINS: "http://${POS_CENTRAL_IP:-192.168.56.10},http://localhost:4200"
     ports:
       - "${POS_CENTRAL_IP:-192.168.56.10}:8080:8080"
     depends_on:
