@@ -164,7 +164,7 @@ Al cobrar, Ventas valida la sesión de Caja y pide el número a Facturación den
 
 **Estructura de paquetes**: un paquete raíz por módulo (`com.medinasystems.pos.sales`, `….inventory`, etc.). Dentro de cada uno, solo la API pública del módulo queda en el paquete raíz; el resto va en subpaquetes internos que otros módulos no pueden usar.
 
-**Idioma**: todo el código va en inglés (paquetes, clases, métodos, variables, tablas, columnas, rutas de la API, JSON, valores de enumeración, mensajes de commit y nombres de pruebas). Solo la documentación, como este plan, va en español. Los mensajes que ve el usuario final se sacan a archivos de traducción (`messages_es.properties`).
+**Idioma**: todo el código va en inglés (paquetes, clases, métodos, variables, tablas, columnas, rutas de la API, JSON, valores de enumeración, mensajes de commit y nombres de pruebas). Solo la documentación, como este plan, va en español. Los mensajes que ve el usuario final, incluidos los de error, se sacan a archivos de traducción en inglés y en español (`messages.properties` y `messages_es.properties`); cada error de negocio tiene un código fijo y su texto se busca con la llave `error.<CODE>`. El idioma lo decide el encabezado `Accept-Language`; si no viene, se responde en español.
 
 **Capas dentro de cada módulo**
 
@@ -1250,3 +1250,26 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - Una sucursal que el usuario no ve responde 404 en lugar de 403, para no revelar que existe.
 - Crear una sucursal no da acceso a nadie, ni siquiera a quien la crea. Cada usuario entra solo a las sucursales (tiendas) que el administrador le asigna en `user_branch` con `PUT /users/{id}/branches`.
 - Los eventos de auditoría de cambios guardan solo los campos que cambiaron; las altas no tienen valores anteriores.
+
+### Decisiones de implementación: paso 4 (catálogo)
+
+- Migración `V6__catalog.sql`. Desviaciones del modelo, por las reglas de `CLAUDE.md`:
+  - `unit_of_measure` lleva `active`, porque la regla `UNIT_INACTIVE` lo necesita.
+  - `product_tax` tiene `id` propio, `UNIQUE (product_id, country_id)` y columnas de auditoría. La clave compuesta del plan se cambia por esta, para cumplir "id BIGINT y auditoría en todas las tablas".
+  - `product.min_stock` es `NOT NULL DEFAULT 0` y tiene `CHECK >= 0`. `price_includes_tax` tiene `CHECK (price_includes_tax)`.
+  - `tax` y `product_tax` tienen clave foránea a `country` (integridad referencial del esquema). El código del módulo catálogo no accede a la entidad `Country`.
+- Contrato entre módulos: `organization.CountryDirectory` (raíz del módulo organización) con `isActive(long countryId)`. Su implementación vive en `organization/application/DefaultCountryDirectory`. Un país inexistente responde `false` y se reporta como `COUNTRY_INACTIVE`.
+- Un impuesto guarda su país como `country_id` (BIGINT). Su país no cambia después de creado (`TAX_COUNTRY_IMMUTABLE`), porque los productos ya lo usan para el país indicado.
+- Reglas adicionales a las del plan:
+  - `NEGATIVE_QUANTITY`: el stock mínimo no puede ser negativo.
+  - Un `SERVICE` con `tracksInventory = true` se guarda con `false` sin error. Un `SERVICE` con `tracksSerials = true` sí responde `SERVICE_WITH_SERIALS`.
+  - `TAX_IN_USE` cuenta los productos activos que usan el impuesto y cualquier fila de `product_tax` que lo use (la tabla no tiene `active`).
+  - Una categoría no puede quedar inactiva con subcategorías o productos activos (`CATEGORY_IN_USE`), al desactivarla con PUT o con DELETE.
+  - Las unidades de medida no tienen DELETE y no tienen comprobación de uso.
+- Evento `PRICE_CHANGED` (entidad `product`): solo se publica si cambió `salePrice` o `cost`. Además se publica `PRODUCT_UPDATED` con todos los cambios.
+- `DELETE` de categorías y productos responde 200 con la entidad desactivada, en lugar de 204.
+- La búsqueda por código de barras o SKU devuelve también productos inactivos, para consultas históricas. El filtrado de venta llegará con el módulo de ventas.
+- `PUT /products/{id}/taxes` reemplaza la lista completa. Las filas existentes se actualizan en lugar de borrarse y crearse, para no romper la clave única durante el flush.
+- Los indicadores booleanos omitidos en las peticiones toman un valor por defecto: `active = true`, `tracksInventory = true`, `tracksSerials = false`, `requiresExclusiveInvoice = false`, `allowsDecimals = false`, `productType = GOOD`.
+- Mensajes: los textos que ve el usuario van en `messages.properties` (inglés) y `messages_es.properties` (español), bajo la clave `error.<CODIGO>`. `GlobalExceptionHandler` los resuelve con el idioma de la petición; sin `Accept-Language`, `spring.web.locale` usa español. Pendiente: los textos de los módulos organización y seguridad siguen escritos en el código y se migrarán cuando se pida. En el paso 4, el mensaje escrito en el código sirve de respaldo si falta la traducción.
+- Códigos de error nuevos: `CATEGORY_CYCLE`, `CATEGORY_IN_USE`, `CATEGORY_NOT_FOUND`, `DUPLICATE_UNIT_CODE`, `UNIT_NOT_FOUND`, `UNIT_INACTIVE`, `INVALID_TAX_RATE`, `DUPLICATE_TAX_CODE`, `TAX_NOT_FOUND`, `TAX_INACTIVE`, `TAX_IN_USE`, `TAX_COUNTRY_MISMATCH`, `TAX_COUNTRY_IMMUTABLE`, `DUPLICATE_SKU`, `DUPLICATE_BARCODE`, `SERVICE_WITH_SERIALS`, `SERIALS_REQUIRE_INVENTORY`, `SERIALS_REQUIRE_WHOLE_UNIT`, `NEGATIVE_AMOUNT`, `NEGATIVE_QUANTITY`, `DUPLICATE_PRODUCT_TAX_COUNTRY` (422), y `COUNTRY_INACTIVE` (compartido con organización).
