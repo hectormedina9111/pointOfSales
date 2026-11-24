@@ -1708,6 +1708,31 @@
             "body": null
           },
           "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio de hoy (sin fecha)",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<priceListId>>",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
         }
       ],
       "auth": {

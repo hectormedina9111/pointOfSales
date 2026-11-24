@@ -1,38 +1,19 @@
 # Sistema Punto de Venta (backend)
 
-Backend del sistema de punto de venta de Medina Systems. Es un solo proyecto Spring Boot que corre como **central** (dueña de catálogos, precios y usuarios) o como **tienda** (operación diaria de una sucursal), según el perfil activo.
+Backend del sistema de punto de venta de Medina Systems. Es un solo proyecto Spring Boot que corre como **central** (dueña de catálogos, precios, usuarios y organización) o como **tienda** (operación diaria de una sucursal), según el perfil activo. El plan completo (requerimientos, arquitectura, modelo de datos, API y MVP) está en [docs/plan.md](docs/plan.md).
 
-El plan completo (requerimientos, arquitectura, modelo de datos, API y MVP) está en [docs/plan.md](docs/plan.md).
+## Guía de inicio a fin
 
-## Requisitos
+### 1. Requisitos
 
-En Windows:
+En Windows, para el desarrollo:
 
 - Git (con Git Bash)
-- JDK 25
-- Docker Desktop
-- VirtualBox
-- Vagrant
+- JDK 25 (para compilar con `./mvnw`)
+- Docker Desktop (Testcontainers y la compilación local)
+- VirtualBox y Vagrant (la máquina virtual que levanta el entorno completo)
 
-## Pruebas
-
-El proyecto se hace en dos etapas: primero se programa todo y después se escriben las pruebas completas. Por ahora no hay pruebas: `./mvnw verify` solo compila.
-
-Desde Git Bash:
-
-```bash
-./mvnw verify
-```
-
-En PowerShell:
-
-```powershell
-mvnw.cmd verify
-```
-
-Las pruebas de integración usan Testcontainers, así que Docker Desktop debe estar encendido.
-
-## Levantar el entorno
+### 2. Levantar el entorno
 
 Dentro de la carpeta del proyecto:
 
@@ -40,7 +21,7 @@ Dentro de la carpeta del proyecto:
 vagrant up
 ```
 
-Esto crea la máquina virtual Ubuntu, instala Docker y levanta la central, la tienda 1 y la tienda 2, cada una con su base de datos.
+Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
 
 | Nodo     | API (puerto) | Base de datos (puerto) |
 |----------|--------------|------------------------|
@@ -48,117 +29,157 @@ Esto crea la máquina virtual Ubuntu, instala Docker y levanta la central, la ti
 | Tienda 1 | 8081         | 5433                   |
 | Tienda 2 | 8082         | 5434                   |
 
-Comprobaciones rápidas:
+Al arrancar, la central crea sola el país Honduras, la empresa de ejemplo, las unidades de medida (UNIT, KG, LB, LT) y los impuestos de Honduras (EXEMPT, ISV15, ISV18). No crea sucursales. Las tiendas 1 y 2 se activan solas y reciben una copia de los datos maestros.
 
-- Swagger de la central: http://localhost:8080/swagger-ui.html (tiendas: `:8081` y `:8082`)
-- Identidad del nodo: http://localhost:8080/api/v1/system/info (cambiar el puerto para cada tienda)
+### 3. Entrar como administrador
 
-Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la VM, en `/vagrant`).
+- Usuario: `admin`.
+- **Contraseña en local: `Admin.Local.2026`.** Viene de `.env.example`, que Vagrant copia a `.env`. Solo es para pruebas locales.
+- En producción la contraseña inicial no está en ningún archivo: se toma de `POS_ADMIN_INITIAL_PASSWORD` o se genera en el primer arranque y se muestra una sola vez en el log de la central (`docker compose logs central-api`).
+- El sistema obliga a cambiarla en el primer ingreso: con `mustChangePassword` en `true`, los demás endpoints responden 403 hasta que se cambie con `POST /api/v1/me/password`. El cambio se hace en la central.
 
-## Idioma de los mensajes
+### 4. Swagger
 
-Los mensajes de error y los textos que ve el usuario salen en español por defecto. Para recibirlos en inglés, envía la cabecera `Accept-Language: en`. Los códigos de error (por ejemplo `DUPLICATE_SKU`) no cambian: son identificadores estables en inglés. Los textos están en `messages.properties` (inglés) y `messages_es.properties` (español).
+- Central: http://localhost:8080/swagger-ui.html
+- Tienda 1: http://localhost:8081/swagger-ui.html
+- Tienda 2: http://localhost:8082/swagger-ui.html
 
-## Inicio de sesión
+Identidad de cada nodo: `GET /api/v1/system/info` (cambiar el puerto).
+
+### 5. Colección Hoppscotch
+
+La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hoppscotch.json` (90 peticiones en 9 carpetas) y dos entornos, `pos-local.hoppscotch-env.json` (central) y `pos-store1.hoppscotch-env.json` (tienda 1). Importarla y recorrer las carpetas en orden, de la 1 a la 9.
+
+| Carpeta | Qué prueba |
+|---|---|
+| 1. Sistema | Información del nodo y salud del servicio. |
+| 2. Sesión | Login, refresco de token, cambio de contraseña, perfil, menús y privilegios del usuario, logout. |
+| 3. Usuarios, roles y privilegios | Altas y cambios de usuarios y roles, y privilegios de un rol (`PUT /roles/{id}/privileges`). |
+| 4. Organización | Países, empresa, sucursales y asignación de sucursales a usuarios. |
+| 5. Catálogo | Unidades, impuestos, categorías (árbol), productos, servicios y búsquedas por texto, código de barras y SKU. |
+| 6. Precios | Listas de mayoreo y VIP, escalas por cantidad, vigencias, precio por sucursal y precio de hoy. |
+| 7. Tiendas | Panel de tiendas (central); estado de sincronización y login en la tienda 1 (tienda). |
+| 8. Auditoría | Bitácora de cambios, por entidad y por fechas. |
+| 9. Errores de ejemplo | Respuestas de error esperadas (401, 422). Deben fallar a propósito. |
+
+Antes de empezar, pon la contraseña de `admin` en el entorno (`adminPassword`) y ejecuta **2. Sesión → Login**. Después, **2. Sesión → Cambiar contraseña** y actualiza `adminPassword` con la nueva. El token de acceso dura 15 minutos; si una petición responde 401, ejecuta **Refrescar token**.
+
+La colección no cubre todo. Los casos que faltan (por ejemplo, un MANAGER al que se le quita un privilegio, o un precio de 115 con ISV 15 %) están en [docs/plan.md](docs/plan.md), sección "Estado de los criterios (cierre del MVP)".
+
+### 6. Sincronización y corte de internet
+
+Cada 30 segundos (y 15 segundos después del arranque), cada tienda pide a la central los cambios de datos maestros desde la última versión que aplicó. La primera vez carga una copia completa. La tienda siempre llama a la central; la central nunca la llama.
+
+Prueba de corte (con el entorno levantado):
+
+1. Desconecta la tienda 2 de la red de la central: `scripts/simulate-outage.sh store2 down`. La tienda sigue funcionando con sus datos.
+2. En la central, cambia el precio de un producto (carpeta 5, "Actualizar producto").
+3. En la tienda 1, `GET /api/v1/products/{id}/price` muestra el precio nuevo en menos de un minuto. En la tienda 2 sigue el precio anterior.
+4. En el panel de la central (`GET /api/v1/store-nodes`), la tienda 2 aparece como `OUT_OF_SYNC` con `pendingChanges` mayor que cero, después de dos minutos sin latido.
+5. Reconéctala: `scripts/simulate-outage.sh store2 up`. En el siguiente ciclo aplica el cambio y `pendingChanges` vuelve a cero.
+
+Se puede usar `store1` en lugar de `store2`. Para ver el estado de una tienda: `GET /api/v1/sync/status` en su puerto, o el log de su contenedor.
+
+### 7. Reiniciar desde cero
+
+```bash
+scripts/reset.sh
+```
+
+Borra las bases de datos de la central y de las tiendas (volúmenes) y levanta de nuevo el entorno. Pide confirmación.
+
+### 8. Compilar y pruebas
+
+Desde Git Bash:
+
+```bash
+./mvnw verify
+```
+
+En PowerShell: `mvnw.cmd verify`.
+
+Por ahora no hay pruebas en el repositorio: el proyecto se hace en dos etapas. Primero se programa todo; después se escriben las pruebas (unitarias, de integración con Testcontainers, de seguridad y de arquitectura). Mientras tanto, `./mvnw verify` solo compila.
+
+### 9. Dónde están las decisiones
+
+- [docs/plan.md](docs/plan.md): requerimientos, arquitectura, modelo de datos, API y MVP.
+- "Decisiones de implementación" de cada paso (3, 4, 5, 6A, 6B y 7), al final de `docs/plan.md`. Ahí se documentan las desviaciones del plan y lo que queda pendiente.
+
+## Referencia de la API
+
+### Idioma de los mensajes
+
+Los mensajes de error y los textos que ve el usuario salen en español por defecto. Para recibirlos en inglés, envía la cabecera `Accept-Language: en`. Los códigos de error (por ejemplo `DUPLICATE_SKU`) no cambian. Los textos están en `messages.properties` (inglés) y `messages_es.properties` (español).
+
+### Inicio de sesión
 
 - `POST /api/v1/auth/login` con `{"username": "...", "password": "..."}` devuelve `accessToken` (válido 15 minutos), `refreshToken`, `expiresIn` y `mustChangePassword`. Las rutas protegidas reciben el token en `Authorization: Bearer <accessToken>`.
-- `POST /api/v1/auth/refresh` cambia el refresh token por uno nuevo (el anterior queda revocado). `POST /api/v1/auth/logout` revoca el refresh token.
-- El usuario inicial es `admin`, creado solo en la central. Su contraseña se toma de `POS_ADMIN_INITIAL_PASSWORD`; si la variable está vacía, se genera en el primer arranque y se muestra una sola vez en el log de la central (`docker compose logs central-api`).
-- **En local (Vagrant)** la contraseña inicial es `Admin.Local.2026`, tomada de `.env.example`, que Vagrant copia a `.env` si no existe. Solo sirve para pruebas locales; en producción la variable es un secreto del servidor o se deja vacía.
-- Con `mustChangePassword` en `true`, el resto de endpoints responde 403 hasta que el usuario cambie su contraseña con `POST /api/v1/me/password` (`{"currentPassword": "...", "newPassword": "..."}`, mínimo 10 caracteres).
+- `POST /api/v1/auth/refresh` cambia el refresh token por uno nuevo (el anterior queda revocado). `POST /api/v1/auth/logout` lo revoca.
 - `POS_JWT_SECRET` firma los tokens y debe tener al menos 32 caracteres. Los valores de `.env.example` son solo para desarrollo.
 
-## Privilegios
+### Privilegios
 
-- Cada endpoint de `/api/v1` tiene un privilegio ENDPOINT (tabla `privilege`). Al arrancar, la aplicación lee los controladores, crea los privilegios que falten y se los asigna al rol ADMIN. Si se quita un privilegio ENDPOINT a ADMIN, vuelve a asignarse en el siguiente arranque.
-- Los demás roles (MANAGER, CASHIER, WAREHOUSE_CLERK) empiezan sin privilegios. Se configuran con `PUT /api/v1/roles/{id}/privileges` (`{"privilegeCodes": ["GET_USERS", ...]}`); el cambio aplica en la siguiente petición, sin volver a iniciar sesión.
+- Cada endpoint de `/api/v1` tiene un privilegio ENDPOINT (tabla `privilege`). Al arrancar, la central lee los controladores, crea los privilegios que falten y se los asigna a ADMIN.
+- MANAGER, CASHIER y WAREHOUSE_CLERK empiezan sin privilegios. Se configuran con `PUT /api/v1/roles/{id}/privileges` (`{"privilegeCodes": ["GET_USERS", ...]}`); el cambio aplica en la siguiente petición.
 - Los privilegios MENU y ACTION se mantienen con `/api/v1/privileges`. Los ENDPOINT solo se leen.
 - El frontend usa `GET /api/v1/me/menus` para armar el menú y `GET /api/v1/me/privileges` para mostrar u ocultar botones.
 - Las rutas públicas (`/api/v1/auth/**`, `/api/v1/system/**`) y las del propio usuario (`/api/v1/me/**`) no requieren privilegio.
 
-## Organización y auditoría
+### Organización y auditoría
 
-- Los países, la empresa y las sucursales se mantienen en la central: `GET/POST/PUT /api/v1/countries` (`/countries/{id}` para uno), `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches` (`/branches/{id}` para una).
-- Cada usuario solo ve las sucursales asignadas en `user_branch`. Un listado sin asignaciones devuelve una lista vacía y una sucursal ajena responde 404. Crear una sucursal no da acceso a nadie: el administrador asigna las sucursales a cada usuario con `PUT /api/v1/users/{id}/branches`. Las asignaciones se mantienen con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
-- En una tienda, los endpoints de escritura de datos maestros (países, empresa, sucursales, usuarios, roles y privilegios) responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
-- Cada alta y cambio de datos maestros queda en la bitácora `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas en ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`), ordenada por fecha descendente. Requiere el privilegio ENDPOINT correspondiente.
+- Países, empresa y sucursales: `GET/POST/PUT /api/v1/countries`, `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches`.
+- Cada usuario solo ve las sucursales asignadas en `user_branch`. Una sucursal ajena responde 404. Crear una sucursal no da acceso a nadie: el administrador asigna las sucursales con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
+- En una tienda, los endpoints de escritura de datos maestros responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
+- Cada alta y cambio de datos maestros queda en `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`).
 
-## Catálogo
+### Catálogo
 
-- Las categorías (árbol, `GET/POST/PUT/DELETE /api/v1/categories`, filtros `parentId` y `active`), las unidades de medida (`/api/v1/units-of-measure`), los impuestos por país (`/api/v1/taxes?countryId=`) y los productos (`/api/v1/products`) se mantienen en la central. El catálogo es global: no se filtra por sucursal.
-- Búsqueda de productos: `GET /api/v1/products?q=&categoryId=&type=&active=`. `q` busca parte del nombre sin distinguir mayúsculas, o el SKU o código de barras exacto. También `GET /api/v1/products/{id}`, `/products/barcode/{code}` y `/products/sku/{sku}`.
+- Categorías (árbol, `GET/POST/PUT/DELETE /api/v1/categories`), unidades (`/api/v1/units-of-measure`), impuestos por país (`/api/v1/taxes?countryId=`) y productos (`/api/v1/products`). El catálogo es global: no se filtra por sucursal.
+- Búsqueda: `GET /api/v1/products?q=&categoryId=&type=&active=`. `q` busca parte del nombre sin distinguir mayúsculas, o el SKU o código de barras exacto. También `GET /api/v1/products/{id}`, `/products/barcode/{code}` y `/products/sku/{sku}`.
 - `DELETE` en categorías y productos los desactiva; no los borra. Una categoría no se desactiva si tiene subcategorías o productos activos, y un impuesto en uso no se desactiva.
-- El impuesto de un producto para otro país se mantiene con `GET/PUT /api/v1/products/{id}/taxes` (`[{"countryId": 2, "taxId": 5}]`). `PUT` reemplaza la lista completa.
-- Los precios incluyen ISV. Cambiar el precio o el costo de un producto deja un evento `PRICE_CHANGED` en la bitácora, además del cambio normal.
+- Impuesto de un producto para otro país: `GET/PUT /api/v1/products/{id}/taxes` (`[{"countryId": 2, "taxId": 5}]`). `PUT` reemplaza la lista completa.
+- Los precios incluyen ISV. Cambiar el precio o el costo deja un evento `PRICE_CHANGED` en la bitácora, además del cambio normal.
 - Un servicio (`productType: SERVICE`) nunca controla inventario ni seriales. Los seriales exigen inventario y una unidad sin decimales.
 
-## Precios
+### Precios
 
-- Las listas de precios se mantienen en la central: `GET/POST/PUT /api/v1/price-lists` (`/price-lists/{id}` para una), con filtros `countryId` y `active`. Una lista es `FIXED_PRICE` (precio por producto) o `PERCENT_OFF_BASE` (descuento sobre el precio base, con `percent` de 0 a 100). Todos los precios incluyen ISV.
-- Las escalas de mayoreo son los precios por producto de una lista `FIXED_PRICE`: `GET/POST/PUT/DELETE /api/v1/price-lists/{id}/items` (filtro `productId`). Cada escala empieza en `minQuantity` (1 por defecto) y no se repite para el mismo producto. `DELETE` borra la fila; la bitácora guarda el precio anterior.
-- Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe estar asignada al usuario. La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId` (vacío si se usó el precio base).
-- La lista por defecto de cada sucursal es `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
+- Listas de precios: `GET/POST/PUT /api/v1/price-lists` (`/price-lists/{id}` para una), con filtros `countryId` y `active`. Una lista es `FIXED_PRICE` (precio por producto) o `PERCENT_OFF_BASE` (descuento sobre el precio base, con `percent` de 0 a 100).
+- Escalas de mayoreo (solo en listas `FIXED_PRICE`): `GET/POST/PUT/DELETE /api/v1/price-lists/{id}/items` (filtro `productId`). Cada escala empieza en `minQuantity` (1 por defecto) y no se repite para el mismo producto.
+- Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe estar asignada al usuario. Sin `date`, el día es hoy en la zona horaria del país (Honduras: UTC-6). La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId`.
+- Lista por defecto de cada sucursal: `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
 
-## Tiendas y activación
+### Tiendas y activación
 
-Cada tienda tiene su propio servidor y se activa ante la central una sola vez. La tienda siempre llama a la central; la central nunca llama a la tienda. Cuando la tienda se activa, la central le asigna su número y su rango de ids (tienda N: desde N × 1 000 000 000 + 1).
+Cada tienda tiene su propio servidor y se activa ante la central una sola vez. La central le asigna su número y su rango de ids (tienda N: desde N × 1 000 000 000 + 1).
 
-**En local (Vagrant y Docker Compose).** La central crea al arrancar las tiendas 1 y 2 con los códigos de `POS_DEV_ACTIVATION_CODES` (por defecto `1:STORE1-DEV-CODE,2:STORE2-DEV-CODE`). Cada tienda toma su código de `POS_ACTIVATION_CODE` (`POS_STORE1_ACTIVATION_CODE` y `POS_STORE2_ACTIVATION_CODE` en `.env`) y se activa sola al arrancar, en segundo plano. Para comprobarlo, mira el log de la tienda (`Store node 1 activated`) o pregunta a `GET http://localhost:8081/api/v1/sync/status`. Los códigos de desarrollo son solo para local: en producción no se usan.
+**En local.** La central crea al arrancar las tiendas 1 y 2 con los códigos de `POS_DEV_ACTIVATION_CODES` (por defecto `1:STORE1-DEV-CODE,2:STORE2-DEV-CODE`). Cada tienda toma su código de `POS_ACTIVATION_CODE` y se activa sola al arrancar, en segundo plano (`Store node 1 activated` en su log). Las tiendas de desarrollo se crean **sin sucursal**. Los códigos de desarrollo son solo para local.
 
 **Alta de una tienda real.**
 
-1. En la central, un administrador registra la tienda: `POST /api/v1/store-nodes` con `{"branchId": <id de la sucursal>}` (o `null`). La respuesta trae `nodeNumber` y el rango de ids.
-2. Genera el código de activación: `POST /api/v1/store-nodes/{id}/activation-code`. El código se muestra una sola vez y vence en 24 horas.
-3. En el servidor de la tienda, configura el perfil `store`, la base de datos y estas variables:
-   - `POS_NODE_NUMBER`: el `nodeNumber` que asignó la central. Si no coincide, la tienda no guarda su identidad.
-   - `POS_CENTRAL_URL`: la dirección de la central, por ejemplo `https://central.empresa.com`.
-   - `POS_ACTIVATION_CODE`: el código del paso 2.
-4. Arranca la tienda. Se activa en segundo plano y, una vez activada, guarda su identidad en `store_identity`. A partir de ahí `POS_ACTIVATION_CODE` ya no se usa y puede quitarse. Si la central no responde, la tienda reintenta cada 10 segundos durante unos 5 minutos; si el código venció o fue rechazado, el log lo indica y hay que generar otro código.
+1. En la central, un administrador registra la tienda: `POST /api/v1/store-nodes` con `{"branchId": <id de la sucursal>}`. La respuesta trae `nodeNumber` y el rango de ids.
+2. Genera el código de activación: `POST /api/v1/store-nodes/{id}/activation-code`. Se muestra una sola vez y vence en 24 horas.
+3. En el servidor de la tienda, configura el perfil `store`, la base de datos y `POS_NODE_NUMBER` (el número que asignó la central; si no coincide, la tienda no guarda su identidad), `POS_CENTRAL_URL` y `POS_ACTIVATION_CODE`.
+4. Arranca la tienda. Si la central no responde, reintenta cada 10 segundos durante unos 5 minutos. Si el código venció o fue rechazado, el log lo indica y hay que generar otro.
 
-**Revocar una tienda.** `POST /api/v1/store-nodes/{id}/revoke` deja de aceptar su token de inmediato y libera su sucursal. Una tienda revocada no vuelve a activarse: para reemplazarla se registra una tienda nueva.
+**Revocar una tienda.** `POST /api/v1/store-nodes/{id}/revoke` deja de aceptar su token de inmediato y libera su sucursal. Una tienda revocada no vuelve a activarse.
 
-**Token de la tienda.** Las llamadas de la tienda a la central llevan la cabecera `X-Store-Token`. La central guarda solo su SHA-256; la tienda lo guarda en claro en `store_identity`, en su propia base de datos local.
+**Token de la tienda.** Las llamadas de la tienda a la central llevan la cabecera `X-Store-Token`. La central guarda solo su SHA-256; la tienda lo guarda en claro en `store_identity`, en su propia base de datos.
 
-## Sincronización
+### Sincronización
 
 La central es la dueña de los datos maestros (países, empresa, sucursales, usuarios, roles, privilegios, catálogo, impuestos y listas de precios). Cada tienda recibe una copia de solo lectura.
 
-**Cómo funciona.**
-
-- Cada cambio en un dato maestro se anota en la tabla `sync_change_log` de la central dentro de la misma transacción, con un trigger de PostgreSQL. Así no se puede modificar un dato sin dejar el registro.
-- Cada 30 segundos, la tienda pregunta a la central qué cambió desde la última versión que aplicó, aplica los cambios en una sola transacción y los confirma. Si la central no responde, la tienda sigue vendiendo con sus datos locales y reintenta en el siguiente ciclo.
-- La primera vez, antes de los cambios, la tienda carga una copia completa de los datos maestros (la carga inicial). Si esa carga se interrumpe, se vuelve a empezar en el siguiente ciclo.
-- Cada ciclo envía un latido a la central con la versión aplicada. Una tienda sin latido durante dos minutos aparece como fuera de sincronía en el panel.
-
-**Cómo verlo.**
-
-- Panel: `GET /api/v1/store-nodes` en la central. Cada tienda muestra `latestVersion` (la versión de la central), `lastDownloadVersion` (la que confirmó la tienda), `pendingChanges` (cuántos cambios le faltan), `connected` y `syncState` (`ACTIVE`, `OUT_OF_SYNC`, `PENDING` o `DISABLED`).
-- Estado de la tienda: `GET /api/v1/sync/status` en la tienda muestra `lastAppliedVersion`, `snapshotCompletedAt`, `lastSyncAt` y `lastSyncError`. Si la última sincronización falló, el error aparece ahí y en el log de la tienda (sin el token).
-- Intervalo: la propiedad `pos.sync.interval` (30 segundos por defecto).
-
-**Prueba de corte.** Con el entorno local levantado:
-
-1. `scripts/simulate-outage.sh store2 down`: la tienda 2 pierde la conexión con la central, pero sigue funcionando.
-2. En la central, cambia el precio de un producto (por ejemplo, con la colección Hoppscotch, carpeta 5 o 6).
-3. En la tienda 1, `GET /api/v1/products/{id}/price` muestra el precio nuevo en unos segundos. En la tienda 2 sigue el precio anterior.
-4. En el panel de la central, la tienda 2 aparece como `OUT_OF_SYNC` con `pendingChanges` mayor que cero (después de dos minutos sin latido).
-5. `scripts/simulate-outage.sh store2 up`: en el siguiente ciclo, la tienda 2 aplica el cambio y `pendingChanges` vuelve a cero.
-
-## Simular un corte de internet
-
-Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar). La prueba completa de sincronización está en la sección anterior:
-
-```bash
-scripts/simulate-outage.sh store1 down
-scripts/simulate-outage.sh store1 up
-```
-
-Se puede usar `store2` en lugar de `store1`.
+- Cada cambio en un dato maestro se anota en `sync_change_log` con un trigger de PostgreSQL, dentro de la misma transacción. Los cambios se confirman en el mismo orden en que se numeran (ver "Decisiones: paso 7").
+- Cada ciclo de la tienda aplica los cambios en transacciones y los confirma. Si la central no responde, la tienda sigue vendiendo con sus datos locales y reintenta en el siguiente ciclo.
+- La carga inicial es una copia completa de los datos maestros. Si se interrumpe, se vuelve a empezar.
+- Cada ciclo envía un latido. Una tienda sin latido durante dos minutos aparece como fuera de sincronía.
+- **Purga:** cada día a las 03:00 la central borra del registro los cambios que todas las tiendas activas ya descargaron y que tienen más de 30 días (`pos.sync.purge-cron`). Si una tienda pide cambios que ya no existen, la central responde `409 SNAPSHOT_REQUIRED`, la tienda vuelve a cargar la copia completa en su siguiente ciclo.
+- **Panel:** `GET /api/v1/store-nodes` en la central. Cada tienda muestra `latestVersion`, `lastDownloadVersion`, `pendingChanges`, `connected` y `syncState` (`ACTIVE`, `OUT_OF_SYNC`, `PENDING` o `DISABLED`).
+- **Estado de la tienda:** `GET /api/v1/sync/status` muestra `lastAppliedVersion`, `snapshotCompletedAt`, `lastSyncAt` y `lastSyncError`. Nunca muestra el token.
+- Intervalo: `pos.sync.interval` (30 segundos por defecto).
 
 ## Flujo de trabajo
 
 - No se hace push directo a `main`.
 - Cada paso del MVP se desarrolla en su propia rama `feature/step-N-<nombre>`.
-- Al terminar el paso se abre un Pull Request hacia `main`, con la descripción de los requerimientos cubiertos y cómo probarlos.
-- El CI de GitHub Actions debe pasar antes de unir el PR.
-- El siguiente paso no empieza hasta que el PR esté revisado y unido a `main`.
+- Al terminar el paso se abre un Pull Request hacia `main`, con la descripción de los requerimientos cubiertos y cómo probarlos. El CI de GitHub Actions debe pasar antes de unirlo.

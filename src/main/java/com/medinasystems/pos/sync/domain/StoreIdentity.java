@@ -126,6 +126,11 @@ public class StoreIdentity extends AuditableEntity {
         this.snapshotCompletedAt = now;
     }
 
+    /** The central node purged changes this store still needs: the next cycle loads a full snapshot again. */
+    public void requireSnapshot() {
+        this.snapshotCompletedAt = null;
+    }
+
     /** Moves the applied version forward. It never goes back. */
     public void advanceAppliedVersion(long version) {
         if (version > lastAppliedVersion) {

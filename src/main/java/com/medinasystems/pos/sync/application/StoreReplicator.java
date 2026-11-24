@@ -71,6 +71,11 @@ public class StoreReplicator {
             heartbeat(token);
             pullChanges(token);
             state.recordSuccess(clock.instant());
+        } catch (SnapshotRequiredException ex) {
+            // The changes this store needs were purged in the central node: the next cycle starts with a snapshot.
+            state.requireSnapshot();
+            state.recordError(clock.instant(), "The central node requires a new snapshot");
+            log.warn("The central node purged changes this store still needs; a new snapshot will be loaded");
         } catch (RuntimeException ex) {
             String description = describe(ex);
             state.recordError(clock.instant(), description);

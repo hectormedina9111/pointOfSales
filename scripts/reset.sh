@@ -10,6 +10,9 @@ case "$answer" in
   *) echo "Cancelado."; exit 0 ;;
 esac
 
-docker compose down -v
-docker compose up -d --build
-echo "Entorno reiniciado desde cero."
+# Las tres APIs usan la misma imagen (medinasystems/pos:dev), que solo construye el servicio central-api.
+# Se construye primero para que las tiendas no intenten descargarla de un registro.
+docker compose down -v --remove-orphans
+docker compose build
+docker compose up -d
+echo "Entorno reiniciado desde cero. La central crea los datos iniciales al arrancar."
