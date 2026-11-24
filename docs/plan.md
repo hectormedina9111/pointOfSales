@@ -1146,7 +1146,7 @@ Flyway los carga al crear la base, para que el sistema quede usable de inmediato
 
 ### Entorno local con Vagrant
 
-Un `Vagrantfile` en la raíz del repositorio crea una máquina virtual con todo lo necesario, para que cualquier desarrollador levante la central y las dos tiendas con un solo comando (`vagrant up`), sin instalar Java ni PostgreSQL en su equipo. La máquina virtual usa una red privada con su propia IP (`192.168.56.10` por defecto, configurable con `POS_VM_IP`) en lugar de redirigir puertos a `localhost`, para no chocar con otras aplicaciones del equipo (decisión del 24 de noviembre de 2026).
+Un `Vagrantfile` en la raíz del repositorio crea una máquina virtual con todo lo necesario, para que cualquier desarrollador levante la central y las dos tiendas con un solo comando (`vagrant up`), sin instalar Java ni PostgreSQL en su equipo. La máquina virtual usa tres redes privadas, una IP por nodo (`192.168.56.10` central, `192.168.56.11` tienda 1 y `192.168.56.12` tienda 2, configurables con `POS_CENTRAL_IP`, `POS_STORE1_IP` y `POS_STORE2_IP`) en lugar de redirigir puertos a `localhost`, para no chocar con otras aplicaciones del equipo (decisión del 24 de noviembre de 2026).
 
 El desarrollo se hace en **Windows**. En el equipo del desarrollador se instalan Git (con Git Bash), VirtualBox, Vagrant, JDK 25, Docker Desktop y Claude Code: así Claude Code compila y ejecuta las pruebas (incluidas las de Testcontainers) directamente en el equipo, y la máquina virtual Ubuntu se usa para levantar el entorno completo de central y tiendas. El proyecto Maven usa `groupId` `com.medinasystems` y `artifactId` `pos`, con paquete raíz `com.medinasystems.pos`.
 
@@ -1159,11 +1159,11 @@ El desarrollo se hace en **Windows**. En el equipo del desarrollador se instalan
 
 **Los contenedores**
 
-| Servicio | Contenido | Puerto en el equipo |
+| Servicio | Contenido | Dirección en la VM |
 | --- | --- | --- |
-| `central-api` + `central-db` | Backend con perfil central y su PostgreSQL | 8080 (API), 5432 (base) |
-| `store1-api` + `store1-db` | Tienda 1: backend con perfil tienda y su PostgreSQL | 8081 (API), 5433 (base) |
-| `store2-api` + `store2-db` | Tienda 2: backend con perfil tienda y su PostgreSQL | 8082 (API), 5434 (base) |
+| `central-api` + `central-db` | Backend con perfil central y su PostgreSQL | 192.168.56.10: 8080 (API), 5432 (base), 80 (web) |
+| `store1-api` + `store1-db` | Tienda 1: backend con perfil tienda y su PostgreSQL | 192.168.56.11: 8080 (API), 5432 (base), 80 (web) |
+| `store2-api` + `store2-db` | Tienda 2: backend con perfil tienda y su PostgreSQL | 192.168.56.12: 8080 (API), 5432 (base), 80 (web) |
 
 **Redes de Docker**
 
@@ -1208,7 +1208,7 @@ Con el perfil `dev`, la central siembra las dos tiendas registradas (nodo 1 y no
 
 Ningún criterio está marcado todavía: nada se ha probado en la máquina virtual ni con las pruebas automatizadas. Las columnas indican qué paso lo implementa y cómo comprobarlo a mano. Las pruebas automatizadas de estos criterios pertenecen a la **segunda etapa** del proyecto (ver "Pruebas").
 
-Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organización, 5 Catálogo, 6 Precios, 7 Tiendas, 8 Auditoría, 9 Errores. Central en `http://192.168.56.10:8080`, tiendas en `:8081` y `:8082`.
+Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organización, 5 Catálogo, 6 Precios, 7 Tiendas, 8 Auditoría, 9 Errores. Central en `http://192.168.56.10:8080`, tiendas en `http://192.168.56.11:8080` y `http://192.168.56.12:8080`.
 
 | # | Criterio | Implementado en | Cómo verificarlo a mano | Estado |
 | --- | --- | --- | --- | --- |
@@ -1223,10 +1223,10 @@ Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organi
 | 9 | Se rechaza SKU repetido, servicio con seriales y producto con seriales y unidad con decimales | Paso 4 | Carpeta 9: "422 SKU repetido" y "422 Servicio con series". El caso de seriales con unidad decimal se prueba a mano con `allowsDecimals: true` y `tracksSerials: true` | Pendiente de probar (dos casos en la colección) |
 | 10 | Lista mayorista con escalas: precio correcto para 1, 12 y 100 unidades, y precio base fuera de vigencia | Paso 5 | Carpeta 6: "Precio con lista mayoreo" (cantidades 1, 12 y 100) y "Precio VIP fuera de vigencia" | Pendiente de probar |
 | 11 | Un producto de L 115.00 con ISV 15 % da base L 100.00 e impuesto L 15.00 | Paso 5 (`TaxBreakdown`) | Un producto con precio 115 y `ISV15`; `GET /products/{id}/price` debe devolver `taxableBase` 100.00 y `taxAmount` 15.00 | Pendiente de probar |
-| 12 | Un producto creado o modificado en la central aparece en ambas tiendas en menos de un minuto | Paso 6B (intervalo de 30 s y 15 s de arranque) | Carpeta 5 cambia el precio en la central; luego `GET /products/{id}/price` en `:8081` y `:8082` tras unos 60 s | Pendiente de probar |
+| 12 | Un producto creado o modificado en la central aparece en ambas tiendas en menos de un minuto | Paso 6B (intervalo de 30 s y 15 s de arranque) | Carpeta 5 cambia el precio en la central; luego `GET /products/{id}/price` en `192.168.56.11:8080` y `192.168.56.12:8080` tras unos 60 s | Pendiente de probar |
 | 13 | Con la tienda 2 desconectada, el cambio llega a la tienda 1; la tienda 2 responde el precio anterior, el panel muestra cambios pendientes y al reconectarla se pone al día | Pasos 6B y 7 (script de corte) | `scripts/simulate-outage.sh store2 down`, cambiar el precio, comprobar las tres tiendas, `scripts/simulate-outage.sh store2 up`. Detalle en el README | Pendiente de probar |
 | 14 | Un cambio de 10 000 precios se aplica completo en cada tienda, nunca a medias | Paso 6B | **No cumplido por diseño actual:** la réplica aplica cada página de 500 cambios en su propia transacción. Una tienda puede mostrar precios nuevos y viejos mezclados mientras dura el ciclo. Pendiente de decidir (ver "Decisiones: paso 7") | No cumplido |
-| 15 | Una tienda rechaza con 403 cualquier intento de modificar el catálogo | Pasos 4 y 6A (`@CentralOnly`, `READ_ONLY_NODE`) | Con el token de la tienda, `POST /products` en `:8081` debe responder 403 con `code: READ_ONLY_NODE` | Pendiente de probar |
+| 15 | Una tienda rechaza con 403 cualquier intento de modificar el catálogo | Pasos 4 y 6A (`@CentralOnly`, `READ_ONLY_NODE`) | Con el token de la tienda, `POST /products` en `192.168.56.11:8080` debe responder 403 con `code: READ_ONLY_NODE` | Pendiente de probar |
 | 16 | Cambiar el precio de un producto queda en `audit_log` de la central con valor anterior, nuevo, usuario y fecha | Paso 3 (`audit_log`), paso 4 (`PRICE_CHANGED`) | Carpeta 8: `GET /audit-log?entity=product&entityId=<id>` tras cambiar el precio | Pendiente de probar |
 | 17 | Los ids de cada instalación están dentro de su rango (central, tienda 1, tienda 2) | Paso 6A (`IdRangeSequenceAdjuster`, rangos por nodo) | Central: ids de 1 a 999 999 999. Tiendas: `store_identity` con su rango. Comprobar que las secuencias de la tienda arrancan en su rango. Las tiendas todavía no crean registros propios (eso llega con las ventas), así que no hay ids generados por la tienda que verificar | Parcial |
 | 18 | Todas las pruebas pasan, incluida la de arquitectura | Segunda etapa | `./mvnw verify`. En esta etapa no hay pruebas en el repositorio, solo compilación | Fuera de alcance de esta etapa |
@@ -1257,15 +1257,14 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 | Repositorio | Aparte: `pointOfSales-frontend` | Se comunica con el backend solo por la API; mismo flujo de ramas, PR y CI |
 | Cliente de la API | Generado desde el OpenAPI del backend | Si cambia un endpoint, se regenera y el compilador avisa |
 | Idiomas | Español e inglés, español por defecto | La misma regla del backend; el idioma elegido viaja en `Accept-Language` |
-| Despliegue local | El `docker-compose.yml` del backend construye la web desde la carpeta vecina `../pointOfSales-frontend`, y el `Vagrantfile` comparte esa carpeta con la VM | Dos repositorios, un solo `vagrant up`; los dos repos se clonan uno al lado del otro |
+| Despliegue local | Una VM con tres IPs privadas, una por nodo (central `192.168.56.10`, tienda 1 `.11`, tienda 2 `.12`); cada nodo tiene su web en el puerto 80 y su API en el 8080 de su IP; el `docker-compose.yml` del backend construye la web desde la carpeta vecina `../pointOfSales-frontend` | Cada nodo se comporta como una máquina distinta, como en producción, sin ocupar puertos de localhost |
 | Despliegue en servidores | Imagen publicada por el CI del frontend en GitHub Container Registry | Para Oracle Cloud y producción, sin necesitar el código |
-| Llamadas a la API | El nginx de la web reenvía `/central/`, `/store1/` y `/store2/` a cada backend | El navegador no bloquea las llamadas (mismo origen) y el backend no necesita CORS; el selector de servidor solo cambia el prefijo |
+| Llamadas a la API | La web llama directamente a la API de su propio nodo; la dirección se configura al arrancar el contenedor (`API_BASE_URL` → `config.json`); el backend permite ese origen con CORS (`POS_CORS_ALLOWED_ORIGINS`) | Cada tienda usa su web y su API locales y sigue funcionando sin internet; no hay proxy ni selector de servidor |
 
 ### Dentro del MVP del frontend
 
 - **Sesión:** login, cambio de contraseña obligatorio, renovación automática del token y cierre de sesión.
 - **Menú y permisos:** el menú se arma con `/me/menus`; los botones se muestran según `/me/privileges`.
-- **Selector de servidor:** central, tienda 1 o tienda 2, para ver la misma pantalla contra cada nodo y comprobar la réplica.
 - **Administración:** usuarios, roles, privilegios y sucursales asignadas a cada usuario.
 - **Organización:** países, empresa y sucursales.
 - **Catálogo:** categorías en árbol, unidades, impuestos y productos, con búsqueda por nombre, SKU o código de barras.
@@ -1277,7 +1276,7 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 ### Orden de trabajo del frontend
 
 1. **Base:** proyecto Angular 22 con Bootstrap y ng-bootstrap, cliente de la API generado, traducciones, Docker con nginx y CI.
-2. **Sesión y menú:** login, cambio de contraseña, token, menú por privilegios y selector de servidor.
+2. **Sesión y menú:** login, cambio de contraseña, token y menú por privilegios.
 3. **Administración:** usuarios, roles, privilegios y sucursales por usuario.
 4. **Organización y catálogo:** países, empresa, sucursales, categorías, unidades, impuestos y productos.
 5. **Precios:** listas, escalas y consultor de precio.
@@ -1289,7 +1288,7 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 - [ ] `vagrant up` levanta también la web y se abre en el navegador.
 - [ ] El administrador inicia sesión, cambia la contraseña y ve solo los menús que le corresponden; un usuario sin un privilegio no ve el botón de esa acción.
 - [ ] Se crean país, empresa, sucursal, categorías, impuesto, unidad y producto desde la web, y los errores del backend se muestran en el idioma elegido.
-- [ ] Un producto creado en la central aparece en la tienda 1 al cambiar el selector de servidor, en menos de un minuto.
+- [ ] Un producto creado en la web de la central aparece en la web de la tienda 1 (http://192.168.56.11) en menos de un minuto.
 - [ ] El panel muestra la tienda 2 desconectada durante un corte de internet y al día cuando vuelve.
 - [ ] El consultor de precio muestra L 100.00 de base y L 15.00 de ISV para un producto de L 115.00 con ISV 15 %.
 - [ ] Las pantallas funcionan en español y en inglés, y en una tablet.

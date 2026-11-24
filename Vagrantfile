@@ -1,7 +1,7 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# Máquina virtual Ubuntu con Docker para levantar central y dos tiendas.
+# Máquina virtual Ubuntu con Docker para levantar central y dos tiendas, cada una con su web.
 Vagrant.configure("2") do |config|
   config.vm.box = "bento/ubuntu-24.04"
 
@@ -17,10 +17,14 @@ Vagrant.configure("2") do |config|
     puts "Aviso: no se encontró #{frontend_dir}; la web no se levantará. Clona pointOfSales-frontend al lado de este repositorio."
   end
 
-  # Red privada (host-only): la VM tiene su propia IP y no ocupa puertos de localhost,
-  # para no chocar con otras aplicaciones del equipo. Se cambia con POS_VM_IP.
-  # Web :4200, central :8080, tiendas :8081 y :8082, bases de datos :5432 a :5434.
-  config.vm.network "private_network", ip: ENV.fetch("POS_VM_IP", "192.168.56.10")
+  # Redes privadas (host-only): la VM tiene una IP por nodo, para simular tres máquinas
+  # distintas (cada una con su web en el puerto 80 y su API en el 8080). Así no se ocupan
+  # puertos de localhost, para no chocar con otras aplicaciones del equipo.
+  # Central 192.168.56.10, tienda 1 192.168.56.11, tienda 2 192.168.56.12.
+  # Se cambian con POS_CENTRAL_IP, POS_STORE1_IP y POS_STORE2_IP antes de "vagrant up".
+  config.vm.network "private_network", ip: ENV.fetch("POS_CENTRAL_IP", "192.168.56.10")
+  config.vm.network "private_network", ip: ENV.fetch("POS_STORE1_IP", "192.168.56.11")
+  config.vm.network "private_network", ip: ENV.fetch("POS_STORE2_IP", "192.168.56.12")
 
   config.vm.provider "virtualbox" do |vb|
     vb.name = "medinasystems-pos"

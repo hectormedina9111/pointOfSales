@@ -5,8 +5,8 @@
   "variables": [
     {
       "key": "baseUrl",
-      "initialValue": "http://192.168.56.10:8081",
-      "currentValue": "http://192.168.56.10:8081",
+      "initialValue": "http://192.168.56.11:8080",
+      "currentValue": "http://192.168.56.11:8080",
       "secret": false
     },
     {
@@ -143,8 +143,8 @@
     },
     {
       "key": "storeUrl",
-      "initialValue": "http://192.168.56.10:8081",
-      "currentValue": "http://192.168.56.10:8081",
+      "initialValue": "http://192.168.56.11:8080",
+      "currentValue": "http://192.168.56.11:8080",
       "secret": false
     },
     {

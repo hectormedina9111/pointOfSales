@@ -6,12 +6,12 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 |---|---|
 | `pos-api.hoppscotch.json` | Colección "POS API" con 90 peticiones en 9 carpetas. |
 | `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://192.168.56.10:8080`. |
-| `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://192.168.56.10:8081`. |
+| `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://192.168.56.11:8080`. |
 
 ## Requisitos
 
 - Hoppscotch (la versión web o la aplicación de escritorio).
-- Hoppscotch web necesita la extensión del navegador o la aplicación de escritorio para llamar a la IP de la máquina virtual (`192.168.56.10`). Sin eso, las peticiones fallan por CORS o por red.
+- Hoppscotch web necesita la extensión del navegador o la aplicación de escritorio para llamar a la IP de la máquina virtual (`192.168.56.10`, `192.168.56.11` y `192.168.56.12`). Sin eso, las peticiones fallan por CORS o por red.
 - El entorno local arriba: `vagrant up` y `docker compose up -d` dentro de la VM.
 
 ## Importar
@@ -43,7 +43,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 - **Carpeta 8:** son peticiones que deben fallar a propósito. El nombre indica el estado esperado (por ejemplo, `422 SKU repetido`). Si una de ellas no falla, revisa los datos creados antes.
 - **Logout:** deja la petición **Logout** para el final. Revoca el refresh token.
 
-## Tienda (puerto 8081)
+## Tienda 1 (`192.168.56.11:8080`)
 
 - En la tienda, catálogo, precios, usuarios, roles y privilegios son solo lectura. Las escrituras responden **403** con `code: READ_ONLY_NODE`. Eso es lo esperado.
 - Las lecturas funcionan igual que en la central, siempre que la tienda ya tenga los datos sincronizados desde la central.

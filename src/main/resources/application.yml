@@ -48,6 +48,9 @@ pos:
       access-token-ttl: 15m
       refresh-token-ttl: 7d
     admin-initial-password: ${POS_ADMIN_INITIAL_PASSWORD:}
+  cors:
+    # Orígenes (separados por comas) desde los que la web llama a esta API. Vacío = CORS desactivado.
+    allowed-origins: ${POS_CORS_ALLOWED_ORIGINS:}
   sync:
     # Tienda: código para activarse ante la central (solo si la tienda aún no tiene identidad).
     activation-code: ${POS_ACTIVATION_CODE:}

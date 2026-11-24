@@ -116,5 +116,6 @@ Reglas para la segunda etapa:
 - `vagrant up`: crea la máquina virtual y levanta central y tiendas.
 - `docker compose up -d`: levanta los contenedores (dentro de la VM).
 - `./mvnw verify` (Git Bash) o `mvnw.cmd verify` (PowerShell): compila y ejecuta todas las pruebas.
-- La VM usa la IP `192.168.56.10` (red privada, no `localhost`).
-- Swagger: central `http://192.168.56.10:8080/swagger-ui.html`, tienda 1 `:8081`, tienda 2 `:8082`.
+- La VM usa tres IPs privadas, una por nodo (no `localhost`): central `192.168.56.10`, tienda 1 `192.168.56.11`, tienda 2 `192.168.56.12`.
+- Swagger: central `http://192.168.56.10:8080/swagger-ui.html`, tienda 1 `http://192.168.56.11:8080/swagger-ui.html`, tienda 2 `http://192.168.56.12:8080/swagger-ui.html`.
+- Webs: central `http://192.168.56.10`, tienda 1 `http://192.168.56.11`, tienda 2 `http://192.168.56.12`.

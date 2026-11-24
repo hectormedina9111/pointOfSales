@@ -1,6 +1,9 @@
-# Entorno local completo: una central y dos tiendas, cada una con su base de datos.
-# Cada base de datos solo es accesible desde la red de su propio nodo.
-# La red "wan" simula internet: las tiendas llegan a la central por ahí.
+# Entorno local completo: una central y dos tiendas, cada una con su base de datos y su web.
+# Cada nodo tiene su propia IP (POS_CENTRAL_IP, POS_STORE1_IP, POS_STORE2_IP): en la VM de
+# Vagrant son tres IPs privadas, y en producción serían tres máquinas distintas.
+# La web de cada nodo llama directamente a la API de ese mismo nodo; la API permite esos
+# orígenes con CORS (POS_CORS_ALLOWED_ORIGINS). Cada base de datos solo es accesible desde
+# la red de su propio nodo. La red "wan" simula internet: las tiendas llegan a la central por ahí.
 
 services:
   central-db:
@@ -10,7 +13,7 @@ services:
       POSTGRES_USER: ${POS_DB_USER:-pos}
       POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
     ports:
-      - "5432:5432"
+      - "${POS_CENTRAL_IP:-192.168.56.10}:5432:5432"
     volumes:
       - central-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -28,7 +31,7 @@ services:
       POSTGRES_USER: ${POS_DB_USER:-pos}
       POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
     ports:
-      - "5433:5432"
+      - "${POS_STORE1_IP:-192.168.56.11}:5432:5432"
     volumes:
       - store1-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -46,7 +49,7 @@ services:
       POSTGRES_USER: ${POS_DB_USER:-pos}
       POSTGRES_PASSWORD: ${POS_DB_PASSWORD:-pos}
     ports:
-      - "5434:5432"
+      - "${POS_STORE2_IP:-192.168.56.12}:5432:5432"
     volumes:
       - store2-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -69,8 +72,10 @@ services:
       POS_ADMIN_INITIAL_PASSWORD: ${POS_ADMIN_INITIAL_PASSWORD:-}
       # Solo local: códigos de activación de desarrollo para las tiendas 1 y 2.
       POS_DEV_ACTIVATION_CODES: ${POS_DEV_ACTIVATION_CODES:-1:STORE1-DEV-CODE,2:STORE2-DEV-CODE}
+      # Web de la central: la única web que puede llamar a esta API.
+      POS_CORS_ALLOWED_ORIGINS: "http://${POS_CENTRAL_IP:-192.168.56.10}"
     ports:
-      - "8080:8080"
+      - "${POS_CENTRAL_IP:-192.168.56.10}:8080:8080"
     depends_on:
       central-db:
         condition: service_healthy
@@ -90,8 +95,10 @@ services:
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
       POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
+      # Web de la tienda 1.
+      POS_CORS_ALLOWED_ORIGINS: "http://${POS_STORE1_IP:-192.168.56.11}"
     ports:
-      - "8081:8080"
+      - "${POS_STORE1_IP:-192.168.56.11}:8080:8080"
     depends_on:
       central-api:
         condition: service_started
@@ -113,8 +120,10 @@ services:
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
       POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
+      # Web de la tienda 2.
+      POS_CORS_ALLOWED_ORIGINS: "http://${POS_STORE2_IP:-192.168.56.12}"
     ports:
-      - "8082:8080"
+      - "${POS_STORE2_IP:-192.168.56.12}:8080:8080"
     depends_on:
       central-api:
         condition: service_started
@@ -125,20 +134,40 @@ services:
       - store2-lan
 
   # Frontend (repositorio pointOfSales-frontend, clonado al lado de este). Solo con
-  # "docker compose --profile web ...". Su nginx reenvía /central/, /store1/ y /store2/
-  # a cada API; está en las redes locales para seguir viendo cada tienda durante un corte.
-  web:
+  # "docker compose --profile web ...". Hay una web por nodo, cada una en el puerto 80 de
+  # la IP de su nodo, y cada una llama a la API de ese mismo nodo (API_BASE_URL).
+  # Las tres comparten la misma imagen; las redes solo aíslan cada nodo.
+  central-web:
     profiles: ["web"]
     build: ../pointOfSales-frontend
     image: medinasystems/pos-web:dev
+    environment:
+      API_BASE_URL: "http://${POS_CENTRAL_IP:-192.168.56.10}:8080"
     ports:
-      - "4200:80"
-    depends_on:
-      - central-api
+      - "${POS_CENTRAL_IP:-192.168.56.10}:80:80"
     networks:
-      - wan
       - central-lan
+
+  store1-web:
+    profiles: ["web"]
+    build: ../pointOfSales-frontend
+    image: medinasystems/pos-web:dev
+    environment:
+      API_BASE_URL: "http://${POS_STORE1_IP:-192.168.56.11}:8080"
+    ports:
+      - "${POS_STORE1_IP:-192.168.56.11}:80:80"
+    networks:
       - store1-lan
+
+  store2-web:
+    profiles: ["web"]
+    build: ../pointOfSales-frontend
+    image: medinasystems/pos-web:dev
+    environment:
+      API_BASE_URL: "http://${POS_STORE2_IP:-192.168.56.12}:8080"
+    ports:
+      - "${POS_STORE2_IP:-192.168.56.12}:80:80"
+    networks:
       - store2-lan
 
 volumes:
