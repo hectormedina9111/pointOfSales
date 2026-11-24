@@ -5,8 +5,8 @@
   "variables": [
     {
       "key": "baseUrl",
-      "initialValue": "http://localhost:8081",
-      "currentValue": "http://localhost:8081",
+      "initialValue": "http://192.168.56.10:8081",
+      "currentValue": "http://192.168.56.10:8081",
       "secret": false
     },
     {
@@ -143,8 +143,8 @@
     },
     {
       "key": "storeUrl",
-      "initialValue": "http://localhost:8081",
-      "currentValue": "http://localhost:8081",
+      "initialValue": "http://192.168.56.10:8081",
+      "currentValue": "http://192.168.56.10:8081",
       "secret": false
     },
     {

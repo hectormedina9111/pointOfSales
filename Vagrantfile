@@ -17,10 +17,10 @@ Vagrant.configure("2") do |config|
     puts "Aviso: no se encontró #{frontend_dir}; la web no se levantará. Clona pointOfSales-frontend al lado de este repositorio."
   end
 
-  # Puertos de la central, la tienda 1 y la tienda 2, con sus bases de datos.
-  [4200, 8080, 8081, 8082, 5432, 5433, 5434].each do |port|
-    config.vm.network "forwarded_port", guest: port, host: port, host_ip: "127.0.0.1"
-  end
+  # Red privada (host-only): la VM tiene su propia IP y no ocupa puertos de localhost,
+  # para no chocar con otras aplicaciones del equipo. Se cambia con POS_VM_IP.
+  # Web :4200, central :8080, tiendas :8081 y :8082, bases de datos :5432 a :5434.
+  config.vm.network "private_network", ip: ENV.fetch("POS_VM_IP", "192.168.56.10")
 
   config.vm.provider "virtualbox" do |vb|
     vb.name = "medinasystems-pos"

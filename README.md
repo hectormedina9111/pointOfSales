@@ -21,7 +21,7 @@ Dentro de la carpeta del proyecto:
 vagrant up
 ```
 
-Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. Si el repositorio del frontend ([pointOfSales-frontend](https://github.com/hectormedina9111/pointOfSales-frontend)) está clonado al lado de este (`repositorios/pointOfSales` y `repositorios/pointOfSales-frontend`), también levanta la web en http://localhost:4200. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
+Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. Si el repositorio del frontend ([pointOfSales-frontend](https://github.com/hectormedina9111/pointOfSales-frontend)) está clonado al lado de este (`repositorios/pointOfSales` y `repositorios/pointOfSales-frontend`), también levanta la web en http://192.168.56.10:4200. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
 
 | Nodo     | API (puerto) | Base de datos (puerto) |
 |----------|--------------|------------------------|
@@ -40,9 +40,12 @@ Al arrancar, la central crea sola el país Honduras, la empresa de ejemplo, las 
 
 ### 4. Swagger
 
-- Central: http://localhost:8080/swagger-ui.html
-- Tienda 1: http://localhost:8081/swagger-ui.html
-- Tienda 2: http://localhost:8082/swagger-ui.html
+La máquina virtual tiene su propia IP, `192.168.56.10`, para no ocupar puertos de `localhost`. Si choca con otra red de tu equipo, se cambia con la variable de entorno `POS_VM_IP` antes de `vagrant up`.
+
+
+- Central: http://192.168.56.10:8080/swagger-ui.html
+- Tienda 1: http://192.168.56.10:8081/swagger-ui.html
+- Tienda 2: http://192.168.56.10:8082/swagger-ui.html
 
 Identidad de cada nodo: `GET /api/v1/system/info` (cambiar el puerto).
 

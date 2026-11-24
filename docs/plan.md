@@ -1146,7 +1146,7 @@ Flyway los carga al crear la base, para que el sistema quede usable de inmediato
 
 ### Entorno local con Vagrant
 
-Un `Vagrantfile` en la raíz del repositorio crea una máquina virtual con todo lo necesario, para que cualquier desarrollador levante la central y las dos tiendas con un solo comando (`vagrant up`), sin instalar Java ni PostgreSQL en su equipo.
+Un `Vagrantfile` en la raíz del repositorio crea una máquina virtual con todo lo necesario, para que cualquier desarrollador levante la central y las dos tiendas con un solo comando (`vagrant up`), sin instalar Java ni PostgreSQL en su equipo. La máquina virtual usa una red privada con su propia IP (`192.168.56.10` por defecto, configurable con `POS_VM_IP`) en lugar de redirigir puertos a `localhost`, para no chocar con otras aplicaciones del equipo (decisión del 24 de noviembre de 2026).
 
 El desarrollo se hace en **Windows**. En el equipo del desarrollador se instalan Git (con Git Bash), VirtualBox, Vagrant, JDK 25, Docker Desktop y Claude Code: así Claude Code compila y ejecuta las pruebas (incluidas las de Testcontainers) directamente en el equipo, y la máquina virtual Ubuntu se usa para levantar el entorno completo de central y tiendas. El proyecto Maven usa `groupId` `com.medinasystems` y `artifactId` `pos`, con paquete raíz `com.medinasystems.pos`.
 
@@ -1208,7 +1208,7 @@ Con el perfil `dev`, la central siembra las dos tiendas registradas (nodo 1 y no
 
 Ningún criterio está marcado todavía: nada se ha probado en la máquina virtual ni con las pruebas automatizadas. Las columnas indican qué paso lo implementa y cómo comprobarlo a mano. Las pruebas automatizadas de estos criterios pertenecen a la **segunda etapa** del proyecto (ver "Pruebas").
 
-Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organización, 5 Catálogo, 6 Precios, 7 Tiendas, 8 Auditoría, 9 Errores. Central en `http://localhost:8080`, tiendas en `:8081` y `:8082`.
+Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organización, 5 Catálogo, 6 Precios, 7 Tiendas, 8 Auditoría, 9 Errores. Central en `http://192.168.56.10:8080`, tiendas en `:8081` y `:8082`.
 
 | # | Criterio | Implementado en | Cómo verificarlo a mano | Estado |
 | --- | --- | --- | --- | --- |

@@ -5,13 +5,13 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 | Archivo | Qué es |
 |---|---|
 | `pos-api.hoppscotch.json` | Colección "POS API" con 90 peticiones en 9 carpetas. |
-| `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://localhost:8080`. |
-| `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://localhost:8081`. |
+| `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://192.168.56.10:8080`. |
+| `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://192.168.56.10:8081`. |
 
 ## Requisitos
 
 - Hoppscotch (la versión web o la aplicación de escritorio).
-- Hoppscotch web necesita la extensión del navegador o la aplicación de escritorio para llamar a `localhost`. Sin eso, las peticiones fallan por CORS o por red.
+- Hoppscotch web necesita la extensión del navegador o la aplicación de escritorio para llamar a la IP de la máquina virtual (`192.168.56.10`). Sin eso, las peticiones fallan por CORS o por red.
 - El entorno local arriba: `vagrant up` y `docker compose up -d` dentro de la VM.
 
 ## Importar
