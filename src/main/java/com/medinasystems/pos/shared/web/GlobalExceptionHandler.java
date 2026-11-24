@@ -1,5 +1,11 @@
 package com.medinasystems.pos.shared.web;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
@@ -7,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -70,7 +78,23 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                   WebRequest request) {
         ResponseEntity<Object> response = super.handleMethodArgumentNotValid(ex, headers, status, request);
         if (response.getBody() instanceof ProblemDetail problem) {
-            problem.setDetail(messages.getMessage("error.VALIDATION_FAILED", null, LocaleContextHolder.getLocale()));
+            Locale locale = LocaleContextHolder.getLocale();
+            problem.setDetail(messages.getMessage("error.VALIDATION_FAILED", null, locale));
+
+            List<Map<String, Object>> errors = new ArrayList<>();
+            for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("field", fieldError.getField());
+                error.put("message", messages.getMessage(fieldError, locale));
+                errors.add(error);
+            }
+            for (ObjectError globalError : ex.getBindingResult().getGlobalErrors()) {
+                Map<String, Object> error = new LinkedHashMap<>();
+                error.put("field", null);
+                error.put("message", messages.getMessage(globalError, locale));
+                errors.add(error);
+            }
+            problem.setProperty("errors", errors);
         }
         return response;
     }
