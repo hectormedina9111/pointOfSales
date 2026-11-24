@@ -128,6 +128,7 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - MANAGER, CASHIER y WAREHOUSE_CLERK empiezan sin privilegios. Se configuran con `PUT /api/v1/roles/{id}/privileges` (`{"privilegeCodes": ["GET_USERS", ...]}`); el cambio aplica en la siguiente petición.
 - Los privilegios MENU y ACTION se mantienen con `/api/v1/privileges`. Los ENDPOINT solo se leen.
 - El frontend usa `GET /api/v1/me/menus` para armar el menú y `GET /api/v1/me/privileges` para mostrar u ocultar botones.
+- Menús de las pantallas del frontend, creados al arrancar la central por `MenuSeeder` (no con Flyway) y asignados a ADMIN: `MENU_ORGANIZATION` (`_COUNTRIES`, `_COMPANY`, `_BRANCHES`), `MENU_CATALOG` (`_PRODUCTS`, `_CATEGORIES`, `_UNITS`, `_TAXES`), `MENU_PRICING` (`_PRICE_LISTS`, `_PRICE_CHECK`), `MENU_STORES` (`_NODES`, `_SYNC_STATUS`) y `MENU_AUDIT`.
 - Las rutas públicas (`/api/v1/auth/**`, `/api/v1/system/**`) y las del propio usuario (`/api/v1/me/**`) no requieren privilegio.
 
 ### Organización y auditoría

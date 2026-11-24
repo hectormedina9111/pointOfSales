@@ -1260,6 +1260,7 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 | Despliegue local | Una VM con tres IPs privadas, una por nodo (central `192.168.56.10`, tienda 1 `.11`, tienda 2 `.12`); cada nodo tiene su web en el puerto 80 y su API en el 8080 de su IP; el `docker-compose.yml` del backend construye la web desde la carpeta vecina `../pointOfSales-frontend` | Cada nodo se comporta como una máquina distinta, como en producción, sin ocupar puertos de localhost |
 | Despliegue en servidores | Imagen publicada por el CI del frontend en GitHub Container Registry | Para Oracle Cloud y producción, sin necesitar el código |
 | Llamadas a la API | La web llama directamente a la API de su propio nodo; la dirección se configura al arrancar el contenedor (`API_BASE_URL` → `config.json`); el backend permite ese origen con CORS (`POS_CORS_ALLOWED_ORIGINS`) | Cada tienda usa su web y su API locales y sigue funcionando sin internet; no hay proxy ni selector de servidor |
+| Menús | Los menús de cada pantalla se crean al arrancar la central (no con Flyway) y llegan a las tiendas por réplica; el frontend traduce el nombre por su código | Una migración en la tienda crearía filas con ids de su rango que chocarían con las replicadas |
 
 ### Dentro del MVP del frontend
 
