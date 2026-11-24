@@ -29,12 +29,6 @@ public class BranchAccessService implements BranchAccess {
     }
 
     @Override
-    @Transactional
-    public void grant(long userId, long branchId) {
-        find(userId).addBranch(branchId);
-    }
-
-    @Override
     public long currentUserId() {
         if (SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken jwt
                 && jwt.getToken().getClaim("uid") instanceof Number uid) {

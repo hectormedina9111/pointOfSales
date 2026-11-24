@@ -134,11 +134,6 @@ public class AppUser extends AuditableEntity {
         branchIds.addAll(newBranchIds);
     }
 
-    /** Adds one branch, keeping the others. */
-    public void addBranch(long branchId) {
-        branchIds.add(branchId);
-    }
-
     public boolean hasBranch(Long branchId) {
         return branchIds.contains(branchId);
     }

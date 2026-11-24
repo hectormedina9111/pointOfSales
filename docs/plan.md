@@ -433,7 +433,7 @@ Las tablas siguientes no repiten las columnas de auditoría.
 
 **user\_role**: `user_id` (FK app\_user, PK), `role_id` (FK role, PK).
 
-**user\_branch**: `user_id` (FK app\_user, PK), `branch_id` (FK branch, PK). Limita a qué sucursales accede cada usuario.
+**user\_branch**: `user_id` (FK app\_user, PK), `branch_id` (FK branch, PK). Limita a qué sucursales accede cada usuario. Las asigna el administrador; crear una sucursal no la asigna a nadie.
 
 **privilege** (privilegio): una sola tabla guarda los tres tipos de permiso, distinguidos por `type`. Las columnas que no aplican a un tipo quedan en NULL; un `CHECK` exige las obligatorias de cada tipo.
 
@@ -1248,5 +1248,5 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - `branch.default_price_list_id` no tiene clave foránea hasta el paso 5, cuando existe `price_list`.
 - Códigos de error nuevos: `COUNTRY_INACTIVE`, `COUNTRY_NOT_FOUND`, `DUPLICATE_ISO_CODE`, `DUPLICATE_TAX_ID`, `DUPLICATE_BRANCH_CODE`, `COMPANY_NOT_CONFIGURED`, `BRANCH_NOT_FOUND` (422), y `READ_ONLY_NODE` (403 en la tienda).
 - Una sucursal que el usuario no ve responde 404 en lugar de 403, para no revelar que existe.
-- La creación de una sucursal asigna esa sucursal al usuario que la crea.
+- Crear una sucursal no da acceso a nadie, ni siquiera a quien la crea. Cada usuario entra solo a las sucursales (tiendas) que el administrador le asigna en `user_branch` con `PUT /users/{id}/branches`.
 - Los eventos de auditoría de cambios guardan solo los campos que cambiaron; las altas no tienen valores anteriores.

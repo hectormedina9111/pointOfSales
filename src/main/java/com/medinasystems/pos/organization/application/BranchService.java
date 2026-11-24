@@ -58,7 +58,6 @@ public class BranchService {
         return BranchView.from(visible(id));
     }
 
-    /** The creator gets access to the new branch, so it shows up in their list. */
     public BranchView create(BranchData data) {
         Company company = companies.findFirstByOrderByIdAsc()
                 .orElseThrow(() -> new BusinessRuleException("COMPANY_NOT_CONFIGURED",
@@ -70,7 +69,6 @@ public class BranchService {
         Branch branch = new Branch(company, country, data.code(), data.name(), data.address(), data.phone(),
                 data.allowNegativeStock(), data.active(), data.defaultPriceListId());
         Branch saved = branches.save(branch);
-        access.grant(access.currentUserId(), saved.getId());
         events.publishEvent(AuditEvent.created("BRANCH_CREATED", "branch", saved.getId(), snapshot(saved)));
         return BranchView.from(saved);
     }

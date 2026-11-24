@@ -11,9 +11,6 @@ public interface BranchAccess {
     /** Ids of the branches the user can see. Empty when the user has none. */
     Set<Long> branchIdsOf(long userId);
 
-    /** Makes one more branch visible to the user. */
-    void grant(long userId, long branchId);
-
     /**
      * Id of the user who made the current request.
      *
