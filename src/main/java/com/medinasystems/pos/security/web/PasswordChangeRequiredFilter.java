@@ -19,12 +19,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 final class PasswordChangeRequiredFilter extends OncePerRequestFilter {
 
+    private final ProblemJsonWriter problems;
+
+    PasswordChangeRequiredFilter(ProblemJsonWriter problems) {
+        this.problems = problems;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         if (mustChangePassword() && !isAllowedWhilePending(request)) {
-            ProblemJsonWriter.write(response, HttpStatus.FORBIDDEN, "Password change required",
-                    "Change your password before using other endpoints");
+            problems.write(request, response, HttpStatus.FORBIDDEN, "title.PASSWORD_CHANGE_REQUIRED",
+                    "error.PASSWORD_CHANGE_REQUIRED");
             return;
         }
         chain.doFilter(request, response);

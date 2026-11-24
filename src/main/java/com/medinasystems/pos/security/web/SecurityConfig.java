@@ -10,11 +10,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -34,7 +32,8 @@ import com.medinasystems.pos.security.application.TokenService;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder,
+                                            ProblemJsonWriter problems) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -47,11 +46,11 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.decoder(jwtDecoder).jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                        .authenticationEntryPoint(SecurityConfig::unauthorized))
+                        .authenticationEntryPoint((request, response, ex) -> unauthorized(problems, request, response)))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(SecurityConfig::unauthorized)
-                        .accessDeniedHandler(SecurityConfig::forbidden))
-                .addFilterAfter(new PasswordChangeRequiredFilter(), BearerTokenAuthenticationFilter.class);
+                        .authenticationEntryPoint((request, response, ex) -> unauthorized(problems, request, response))
+                        .accessDeniedHandler((request, response, ex) -> forbidden(problems, request, response)))
+                .addFilterAfter(new PasswordChangeRequiredFilter(problems), BearerTokenAuthenticationFilter.class);
         return http.build();
     }
 
@@ -79,15 +78,15 @@ public class SecurityConfig {
         return converter;
     }
 
-    private static void unauthorized(HttpServletRequest request, HttpServletResponse response,
-                                     AuthenticationException ex) throws IOException {
+    private static void unauthorized(ProblemJsonWriter problems, HttpServletRequest request,
+                                     HttpServletResponse response) throws IOException {
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        ProblemJsonWriter.write(response, HttpStatus.UNAUTHORIZED, "Unauthorized",
-                "Authentication is required");
+        problems.write(request, response, HttpStatus.UNAUTHORIZED, "title.UNAUTHENTICATED",
+                "error.UNAUTHENTICATED");
     }
 
-    private static void forbidden(HttpServletRequest request, HttpServletResponse response,
-                                  AccessDeniedException ex) throws IOException {
-        ProblemJsonWriter.write(response, HttpStatus.FORBIDDEN, "Forbidden", "Access is denied");
+    private static void forbidden(ProblemJsonWriter problems, HttpServletRequest request,
+                                  HttpServletResponse response) throws IOException {
+        problems.write(request, response, HttpStatus.FORBIDDEN, "title.FORBIDDEN", "error.ACCESS_DENIED");
     }
 }

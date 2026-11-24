@@ -17,6 +17,9 @@ spring:
           time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  messages:
+    basename: messages
+    encoding: UTF-8
   web:
     # Idioma por defecto cuando la petición no trae Accept-Language.
     locale: es
