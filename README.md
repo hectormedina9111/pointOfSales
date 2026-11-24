@@ -55,6 +55,10 @@ Comprobaciones rápidas:
 
 Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la VM, en `/vagrant`).
 
+## Idioma de los mensajes
+
+Los mensajes de error y los textos que ve el usuario salen en español por defecto. Para recibirlos en inglés, envía la cabecera `Accept-Language: en`. Los códigos de error (por ejemplo `DUPLICATE_SKU`) no cambian: son identificadores estables en inglés. Los textos están en `messages.properties` (inglés) y `messages_es.properties` (español).
+
 ## Inicio de sesión
 
 - `POST /api/v1/auth/login` con `{"username": "...", "password": "..."}` devuelve `accessToken` (válido 15 minutos), `refreshToken`, `expiresIn` y `mustChangePassword`. Las rutas protegidas reciben el token en `Authorization: Bearer <accessToken>`.

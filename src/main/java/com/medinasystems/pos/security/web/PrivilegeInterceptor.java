@@ -25,9 +25,11 @@ public class PrivilegeInterceptor implements HandlerInterceptor {
     private static final String GET = "GET";
 
     private final PrivilegeRepository privileges;
+    private final ProblemJsonWriter problems;
 
-    public PrivilegeInterceptor(PrivilegeRepository privileges) {
+    public PrivilegeInterceptor(PrivilegeRepository privileges, ProblemJsonWriter problems) {
         this.privileges = privileges;
+        this.problems = problems;
     }
 
     @Override
@@ -50,8 +52,8 @@ public class PrivilegeInterceptor implements HandlerInterceptor {
         if (userId != null && privileges.existsForUser(userId, method, pattern)) {
             return true;
         }
-        ProblemJsonWriter.write(response, HttpStatus.FORBIDDEN, "Forbidden",
-                "Missing privilege for " + method + " " + pattern);
+        problems.write(request, response, HttpStatus.FORBIDDEN, "title.FORBIDDEN",
+                "error.MISSING_PRIVILEGE", method, pattern);
         return false;
     }
 
