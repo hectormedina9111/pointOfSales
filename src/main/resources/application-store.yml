@@ -1,3 +1,8 @@
+spring:
+  datasource:
+    hikari:
+      # Marca cada conexión de la tienda: los triggers de sync_change_log no registran cambios aquí.
+      connection-init-sql: "SET pos.node_role = 'store'"
 pos:
   node:
     role: store

@@ -1,6 +1,7 @@
 package com.medinasystems.pos.sync.application;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,6 +16,7 @@ import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 import com.medinasystems.pos.sync.domain.StoreNode;
 import com.medinasystems.pos.sync.infrastructure.StoreNodeRepository;
+import com.medinasystems.pos.sync.infrastructure.SyncDataReader;
 
 /** Central node: registers stores, issues their activation codes and revokes them. */
 @Service
@@ -23,25 +25,29 @@ public class StoreNodeService {
 
     private final StoreNodeRepository nodes;
     private final BranchDirectory branches;
+    private final SyncDataReader changeLog;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
-    public StoreNodeService(StoreNodeRepository nodes, BranchDirectory branches,
+    public StoreNodeService(StoreNodeRepository nodes, BranchDirectory branches, SyncDataReader changeLog,
                             ApplicationEventPublisher events, Clock clock) {
         this.nodes = nodes;
         this.branches = branches;
+        this.changeLog = changeLog;
         this.events = events;
         this.clock = clock;
     }
 
     @Transactional(readOnly = true)
     public Page<StoreNodeView> list(Pageable pageable) {
-        return nodes.findAll(pageable).map(StoreNodeView::from);
+        long latest = changeLog.latestVersion();
+        Instant now = clock.instant();
+        return nodes.findAll(pageable).map(node -> StoreNodeView.from(node, latest, now));
     }
 
     @Transactional(readOnly = true)
     public StoreNodeView get(long id) {
-        return StoreNodeView.from(find(id));
+        return view(find(id));
     }
 
     /** Registers a store with the next free node number. The branch is optional, and each branch has one store. */
@@ -63,7 +69,7 @@ public class StoreNodeService {
         StoreNode saved = nodes.save(new StoreNode(nodeNumber, branchId));
         events.publishEvent(AuditEvent.created("STORE_NODE_CREATED", "store_node", saved.getId(),
                 StoreNodeSnapshot.of(saved)));
-        return StoreNodeView.from(saved);
+        return view(saved);
     }
 
     /** Issues a new activation code for a pending or active store. The code is returned only here. */
@@ -82,7 +88,11 @@ public class StoreNodeService {
         node.revoke(clock.instant());
         events.publishEvent(AuditEvent.updated("STORE_NODE_REVOKED", "store_node", node.getId(), before,
                 StoreNodeSnapshot.of(node)));
-        return StoreNodeView.from(node);
+        return view(node);
+    }
+
+    private StoreNodeView view(StoreNode node) {
+        return StoreNodeView.from(node, changeLog.latestVersion(), clock.instant());
     }
 
     private StoreNode find(long id) {

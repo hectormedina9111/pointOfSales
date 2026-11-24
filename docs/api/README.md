@@ -4,7 +4,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 | Archivo | Qué es |
 |---|---|
-| `pos-api.hoppscotch.json` | Colección "POS API" con 81 peticiones en 8 carpetas. |
+| `pos-api.hoppscotch.json` | Colección "POS API" con 89 peticiones en 9 carpetas. |
 | `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://localhost:8080`. |
 | `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://localhost:8081`. |
 
@@ -47,6 +47,8 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 - En la tienda, catálogo, precios, usuarios, roles y privilegios son solo lectura. Las escrituras responden **403** con `code: READ_ONLY_NODE`. Eso es lo esperado.
 - Las lecturas funcionan igual que en la central, siempre que la tienda ya tenga los datos sincronizados desde la central.
+- Las peticiones a la tienda usan el token de la tienda (`storeAccessToken`), no el de la central. Ejecuta **7. Tiendas → Login en la tienda 1** antes de **Productos en la tienda 1**. La contraseña del administrador es la misma que en la central, porque el usuario se replica desde ella.
+- **Estado de sincronización (tienda)** y **Listar tiendas** (panel de la central) sirven para ver si la tienda está al día. Ver la sección "Sincronización" del README principal.
 
 ## Idioma de los mensajes
 

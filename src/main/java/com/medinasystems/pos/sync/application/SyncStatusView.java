@@ -8,5 +8,6 @@ import java.time.Instant;
  */
 public record SyncStatusView(String node, boolean activated, Integer nodeNumber, Long storeNodeId, Long branchId,
                              Long idRangeStart, Long idRangeEnd, Long lastAppliedVersion,
-                             Instant snapshotCompletedAt, String centralUrl) {
+                             Instant snapshotCompletedAt, String centralUrl, Instant lastSyncAt,
+                             String lastSyncError) {
 }
