@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.medinasystems.pos.shared.BusinessRuleException;
+import com.medinasystems.pos.shared.ReadOnlyNodeException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
 /**
@@ -31,6 +32,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatusCode.valueOf(422), ex.getMessage());
         problem.setTitle("Business rule violated");
         problem.setProperty("code", ex.getCode());
+        return problem;
+    }
+
+    @ExceptionHandler(ReadOnlyNodeException.class)
+    public ProblemDetail handleReadOnlyNode(ReadOnlyNodeException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        problem.setTitle("Read-only node");
+        problem.setProperty("code", "READ_ONLY_NODE");
         return problem;
     }
 }

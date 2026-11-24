@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.medinasystems.pos.security.application.PrivilegeView;
 import com.medinasystems.pos.security.application.RoleService;
 import com.medinasystems.pos.security.application.RoleView;
+import com.medinasystems.pos.shared.CentralOnly;
 
 /**
  * Roles and their privileges. Removing ENDPOINT privileges from ADMIN is allowed, but the
@@ -48,11 +49,13 @@ public class RoleController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @CentralOnly
     public RoleView create(@Valid @RequestBody CreateRoleRequest request) {
         return roles.create(request.code(), request.name(), request.description());
     }
 
     @PutMapping("/{id}")
+    @CentralOnly
     public RoleView update(@PathVariable Long id, @Valid @RequestBody UpdateRoleRequest request) {
         return roles.update(id, request.name(), request.description());
     }
@@ -63,6 +66,7 @@ public class RoleController {
     }
 
     @PutMapping("/{id}/privileges")
+    @CentralOnly
     public List<PrivilegeView> replacePrivileges(@PathVariable Long id,
                                                  @Valid @RequestBody ReplacePrivilegesRequest request) {
         return roles.replacePrivileges(id, request.privilegeCodes());

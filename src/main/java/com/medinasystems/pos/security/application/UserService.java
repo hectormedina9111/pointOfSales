@@ -4,8 +4,11 @@ import java.time.Clock;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,6 +20,7 @@ import com.medinasystems.pos.security.domain.Role;
 import com.medinasystems.pos.security.infrastructure.AppUserRepository;
 import com.medinasystems.pos.security.infrastructure.RefreshTokenRepository;
 import com.medinasystems.pos.security.infrastructure.RoleRepository;
+import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
@@ -30,14 +34,16 @@ public class UserService {
     private final RefreshTokenRepository refreshTokens;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public UserService(AppUserRepository users, RoleRepository roles, RefreshTokenRepository refreshTokens,
-                       PasswordEncoder passwordEncoder, Clock clock) {
+                       PasswordEncoder passwordEncoder, Clock clock, ApplicationEventPublisher events) {
         this.users = users;
         this.roles = roles;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.clock = clock;
+        this.events = events;
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +80,30 @@ public class UserService {
         checkUnique(mail, externalId, id);
         user.update(fullName, mail, externalId, active, rolesFor(roleCodes));
         return UserView.from(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Long> branchIds(Long id) {
+        return find(id).getBranchIds().stream().sorted().toList();
+    }
+
+    /**
+     * Replaces the branches of the user. Unknown branch ids are caught by the foreign key
+     * on user_branch when the change is flushed, and reported as BRANCH_NOT_FOUND.
+     */
+    public List<Long> replaceBranches(Long id, Collection<Long> branchIds) {
+        AppUser user = find(id);
+        List<Long> previous = user.getBranchIds().stream().sorted().toList();
+        user.assignBranches(Set.copyOf(branchIds));
+        try {
+            users.saveAndFlush(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessRuleException("BRANCH_NOT_FOUND", "One or more branch ids do not exist");
+        }
+        List<Long> current = user.getBranchIds().stream().sorted().toList();
+        events.publishEvent(AuditEvent.updated("USER_BRANCHES_CHANGED", "app_user", id,
+                Map.of("branchIds", previous), Map.of("branchIds", current)));
+        return current;
     }
 
     /** Sets a temporary password and signs the user out everywhere (refresh tokens are revoked). */

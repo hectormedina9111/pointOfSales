@@ -25,6 +25,7 @@ import com.medinasystems.pos.security.application.PrivilegeService;
 import com.medinasystems.pos.security.application.PrivilegeService.Placement;
 import com.medinasystems.pos.security.application.PrivilegeView;
 import com.medinasystems.pos.security.domain.PrivilegeType;
+import com.medinasystems.pos.shared.CentralOnly;
 
 /** Maintains MENU and ACTION privileges. ENDPOINT privileges can only be read. */
 @RestController
@@ -44,6 +45,7 @@ public class PrivilegeController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @CentralOnly
     public PrivilegeView create(@Valid @RequestBody CreatePrivilegeRequest request) {
         return privileges.create(request.type(), request.code(), request.name(), request.description(),
                 request.module(), new Placement(request.parentCode(), request.frontendRoute(), request.icon(),
@@ -51,6 +53,7 @@ public class PrivilegeController {
     }
 
     @PutMapping("/{id}")
+    @CentralOnly
     public PrivilegeView update(@PathVariable Long id, @Valid @RequestBody UpdatePrivilegeRequest request) {
         return privileges.update(id, request.name(), request.description(),
                 new Placement(request.parentCode(), request.frontendRoute(), request.icon(), request.sortOrder()),

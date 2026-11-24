@@ -16,6 +16,8 @@ En Windows:
 
 ## Pruebas
 
+El proyecto se hace en dos etapas: primero se programa todo y después se escriben las pruebas completas. Por ahora no hay pruebas: `./mvnw verify` solo compila.
+
 Desde Git Bash:
 
 ```bash
@@ -68,6 +70,13 @@ Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la 
 - Los privilegios MENU y ACTION se mantienen con `/api/v1/privileges`. Los ENDPOINT solo se leen.
 - El frontend usa `GET /api/v1/me/menus` para armar el menú y `GET /api/v1/me/privileges` para mostrar u ocultar botones.
 - Las rutas públicas (`/api/v1/auth/**`, `/api/v1/system/**`) y las del propio usuario (`/api/v1/me/**`) no requieren privilegio.
+
+## Organización y auditoría
+
+- Los países, la empresa y las sucursales se mantienen en la central: `GET/POST/PUT /api/v1/countries` (`/countries/{id}` para uno), `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches` (`/branches/{id}` para una).
+- Cada usuario solo ve las sucursales asignadas en `user_branch`. Un listado sin asignaciones devuelve una lista vacía y una sucursal ajena responde 404. Crear una sucursal no da acceso a nadie: el administrador asigna las sucursales a cada usuario con `PUT /api/v1/users/{id}/branches`. Las asignaciones se mantienen con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
+- En una tienda, los endpoints de escritura de datos maestros (países, empresa, sucursales, usuarios, roles y privilegios) responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
+- Cada alta y cambio de datos maestros queda en la bitácora `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas en ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`), ordenada por fecha descendente. Requiere el privilegio ENDPOINT correspondiente.
 
 ## Simular un corte de internet
 
