@@ -1,0 +1,1616 @@
+{
+  "v": 2,
+  "name": "POS API",
+  "folders": [
+    {
+      "v": 2,
+      "name": "1. Sistema",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Información del nodo",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/system/info",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Salud (actuator)",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/actuator/health",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "2. Sesión",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Login",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/auth/login",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"accessToken\", pw.response.body.accessToken);\npw.env.set(\"refreshToken\", pw.response.body.refreshToken);",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"username\": \"admin\",\n  \"password\": \"<<adminPassword>>\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Refrescar token",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/auth/refresh",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"accessToken\", pw.response.body.accessToken);\npw.env.set(\"refreshToken\", pw.response.body.refreshToken);",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"refreshToken\": \"<<refreshToken>>\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Cambiar contraseña",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/me/password",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"currentPassword\": \"<<adminPassword>>\",\n  \"newPassword\": \"<<newPassword>>\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Mi perfil",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/me",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"userId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Mis menús",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/me/menus",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Mis privilegios",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/me/privileges",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Logout",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/auth/logout",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"refreshToken\": \"<<refreshToken>>\"\n}"
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "3. Usuarios, roles y privilegios",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Listar usuarios",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/users",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "username,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver usuario",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<userId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear usuario cajero",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/users",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"cashierId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"username\": \"cajero1\",\n  \"fullName\": \"Cajero Uno\",\n  \"email\": \"cajero1@example.com\",\n  \"externalCode\": \"ERP-0001\",\n  \"roleCodes\": [\n    \"CASHIER\"\n  ],\n  \"initialPassword\": \"Cajero2026-seguro\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar usuario cajero",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<cashierId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"fullName\": \"Cajero Uno Actualizado\",\n  \"email\": \"cajero1@example.com\",\n  \"externalCode\": \"ERP-0001\",\n  \"active\": true,\n  \"roleCodes\": [\n    \"CASHIER\"\n  ]\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Restablecer contraseña del cajero",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<cashierId>>/password-reset",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"newPassword\": \"Cajero2026-nuevo\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar roles",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/roles",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear rol supervisor",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/roles",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"roleId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"SUPERVISOR\",\n  \"name\": \"Supervisor\",\n  \"description\": \"Supervisión de la sucursal\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver rol",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/roles/<<roleId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar rol",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/roles/<<roleId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Supervisor de tienda\",\n  \"description\": \"Supervisión de la sucursal y de catálogos\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Privilegios del rol",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/roles/<<roleId>>/privileges",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Reemplazar privilegios del rol",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/roles/<<roleId>>/privileges",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"privilegeCodes\": [\n    \"MENU_REPORTS\"\n  ]\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar privilegios",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/privileges",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar privilegios de tipo ENDPOINT",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/privileges",
+          "params": [
+            {
+              "key": "type",
+              "value": "ENDPOINT",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear privilegio de menú",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/privileges",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"privilegeId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"type\": \"MENU\",\n  \"code\": \"MENU_REPORTS\",\n  \"name\": \"Reportes\",\n  \"description\": \"Reportes de ventas\",\n  \"module\": \"reports\",\n  \"parentCode\": null,\n  \"frontendRoute\": \"/reports\",\n  \"icon\": \"chart-bar\",\n  \"sortOrder\": 50\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar privilegio de menú",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/privileges/<<privilegeId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Reportes\",\n  \"description\": \"Reportes de ventas\",\n  \"parentCode\": null,\n  \"frontendRoute\": \"/reports\",\n  \"icon\": \"chart-bar\",\n  \"sortOrder\": 55,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "4. Organización",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Listar países",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/countries",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "isoCode,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear país Honduras",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/countries",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"countryId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"isoCode\": \"HN\",\n  \"name\": \"Honduras\",\n  \"currency\": \"HNL\",\n  \"timeZone\": \"America/Tegucigalpa\",\n  \"taxIdLabel\": \"RTN\",\n  \"fiscalProvider\": \"HN_SAR\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver país",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/countries/<<countryId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar país",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/countries/<<countryId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"isoCode\": \"HN\",\n  \"name\": \"Honduras (RTN)\",\n  \"currency\": \"HNL\",\n  \"timeZone\": \"America/Tegucigalpa\",\n  \"taxIdLabel\": \"RTN\",\n  \"fiscalProvider\": \"HN_SAR\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Configurar empresa",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/company",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"companyId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"legalName\": \"Comercial Medina S. de R.L.\",\n  \"tradeName\": \"Comercial Medina\",\n  \"taxId\": \"08019999123456\",\n  \"address\": \"Tegucigalpa, Honduras\",\n  \"phone\": \"2222-0000\",\n  \"email\": \"ventas@example.com\",\n  \"currency\": \"HNL\",\n  \"timeZone\": \"America/Tegucigalpa\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver empresa",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/company",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar sucursales",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/branches",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "code,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear sucursal Tienda Centro",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/branches",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"branchId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"001\",\n  \"name\": \"Tienda Centro\",\n  \"address\": \"Colonia Palmira, Tegucigalpa\",\n  \"phone\": \"2222-0001\",\n  \"countryId\": \"<<countryId>>\",\n  \"allowNegativeStock\": false,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver sucursal",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/branches/<<branchId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar sucursal",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/branches/<<branchId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"001\",\n  \"name\": \"Tienda Centro\",\n  \"address\": \"Colonia Palmira, Tegucigalpa\",\n  \"phone\": \"2222-0001\",\n  \"countryId\": \"<<countryId>>\",\n  \"allowNegativeStock\": false,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Sucursales del usuario admin",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<userId>>/branches",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Asignar sucursales al usuario admin",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<userId>>/branches",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"branchIds\": [\n    \"<<branchId>>\"\n  ]\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Asignar sucursal al cajero",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/users/<<cashierId>>/branches",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"branchIds\": [\n    \"<<branchId>>\"\n  ]\n}"
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "5. Catálogo",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Listar unidades de medida",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/units-of-measure",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "code,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear unidad UNIT",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/units-of-measure",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"unitId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"UNIT\",\n  \"name\": \"Unidad\",\n  \"allowsDecimals\": false,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver unidad",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/units-of-measure/<<unitId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar unidad",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/units-of-measure/<<unitId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"UNIT\",\n  \"name\": \"Unidad de venta\",\n  \"allowsDecimals\": false,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar impuestos",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/taxes",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "countryId",
+              "value": "<<countryId>>",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear impuesto ISV15",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/taxes",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"taxId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"countryId\": \"<<countryId>>\",\n  \"code\": \"ISV15\",\n  \"name\": \"ISV 15%\",\n  \"rate\": 15.0,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver impuesto",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/taxes/<<taxId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar impuesto",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/taxes/<<taxId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"countryId\": \"<<countryId>>\",\n  \"code\": \"ISV15\",\n  \"name\": \"ISV 15% (general)\",\n  \"rate\": 15.0,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear categoría raíz Bebidas",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/categories",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"categoryId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Bebidas\",\n  \"parentId\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear subcategoría Gaseosas",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/categories",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"subcategoryId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Gaseosas\",\n  \"parentId\": \"<<categoryId>>\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar categorías activas",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/categories",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "active",
+              "value": "true",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar subcategorías de Bebidas",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/categories",
+          "params": [
+            {
+              "key": "parentId",
+              "value": "<<categoryId>>",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver categoría",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/categories/<<subcategoryId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar subcategoría",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/categories/<<subcategoryId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Gaseosas y refrescos\",\n  \"parentId\": \"<<categoryId>>\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear producto Coca-Cola 600 ml",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"productId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear servicio Instalación",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"serviceId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sku\": \"INST01\",\n  \"barcode\": null,\n  \"name\": \"Instalación\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 500.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar productos",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "name,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Buscar productos por texto, categoría y tipo",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [
+            {
+              "key": "q",
+              "value": "coca",
+              "active": true
+            },
+            {
+              "key": "categoryId",
+              "value": "<<subcategoryId>>",
+              "active": true
+            },
+            {
+              "key": "type",
+              "value": "GOOD",
+              "active": true
+            },
+            {
+              "key": "active",
+              "value": "true",
+              "active": true
+            },
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "name,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver producto",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Buscar producto por código de barras",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/barcode/7401005900012",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Buscar producto por SKU",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/sku/CC600",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Actualizar producto (precio 26.00)",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 26.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Impuestos del producto",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/taxes",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Reemplazar impuestos del producto",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/taxes",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "[\n  {\n    \"countryId\": \"<<countryId>>\",\n    \"taxId\": \"<<taxId>>\"\n  }\n]"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Desactivar servicio (DELETE)",
+          "method": "DELETE",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<serviceId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "6. Auditoría",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Auditoría de un producto",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/audit-log",
+          "params": [
+            {
+              "key": "entity",
+              "value": "product",
+              "active": true
+            },
+            {
+              "key": "entityId",
+              "value": "<<productId>>",
+              "active": true
+            },
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Auditoría por rango de fechas",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/audit-log",
+          "params": [
+            {
+              "key": "from",
+              "value": "2026-11-01T00:00:00Z",
+              "active": true
+            },
+            {
+              "key": "to",
+              "value": "2026-12-31T23:59:59Z",
+              "active": true
+            },
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "7. Errores de ejemplo",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "401 Contraseña incorrecta",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/auth/login",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"username\": \"admin\",\n  \"password\": \"ContraseñaMala-123\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "422 SKU repetido",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": null,\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "422 Servicio con series",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"sku\": \"INST99\",\n  \"barcode\": null,\n  \"name\": \"Servicio con serie\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 100.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"tracksSerials\": true,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "422 Ciclo de categorías",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/categories/<<categoryId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"name\": \"Bebidas\",\n  \"parentId\": \"<<subcategoryId>>\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "401 Sin token",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "none",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    }
+  ],
+  "requests": [],
+  "auth": {
+    "authType": "bearer",
+    "authActive": true,
+    "token": "<<accessToken>>"
+  },
+  "headers": [
+    {
+      "key": "Accept-Language",
+      "value": "<<lang>>",
+      "active": true
+    }
+  ]
+}

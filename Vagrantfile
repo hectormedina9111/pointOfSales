@@ -47,6 +47,8 @@ Vagrant.configure("2") do |config|
     #!/bin/bash
     set -euo pipefail
     cd /vagrant
+    # Entorno local: si no hay .env, se crea desde .env.example (valores de desarrollo).
+    if [ ! -f .env ]; then cp .env.example .env; fi
     docker compose up -d --build
   SHELL
 end
