@@ -125,7 +125,7 @@ services:
       - store2-lan
 
   # Frontend (repositorio pointOfSales-frontend, clonado al lado de este). Solo con
-  # "docker compose --profile web ...". Su nginx reenvía /central/, /tienda1/ y /tienda2/
+  # "docker compose --profile web ...". Su nginx reenvía /central/, /store1/ y /store2/
   # a cada API; está en las redes locales para seguir viendo cada tienda durante un corte.
   web:
     profiles: ["web"]

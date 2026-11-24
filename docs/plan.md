@@ -1259,7 +1259,7 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 | Idiomas | Español e inglés, español por defecto | La misma regla del backend; el idioma elegido viaja en `Accept-Language` |
 | Despliegue local | El `docker-compose.yml` del backend construye la web desde la carpeta vecina `../pointOfSales-frontend`, y el `Vagrantfile` comparte esa carpeta con la VM | Dos repositorios, un solo `vagrant up`; los dos repos se clonan uno al lado del otro |
 | Despliegue en servidores | Imagen publicada por el CI del frontend en GitHub Container Registry | Para Oracle Cloud y producción, sin necesitar el código |
-| Llamadas a la API | El nginx de la web reenvía `/central/`, `/tienda1/` y `/tienda2/` a cada backend | El navegador no bloquea las llamadas (mismo origen) y el backend no necesita CORS; el selector de servidor solo cambia el prefijo |
+| Llamadas a la API | El nginx de la web reenvía `/central/`, `/store1/` y `/store2/` a cada backend | El navegador no bloquea las llamadas (mismo origen) y el backend no necesita CORS; el selector de servidor solo cambia el prefijo |
 
 ### Dentro del MVP del frontend
 
