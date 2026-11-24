@@ -116,6 +116,24 @@
       "initialValue": "",
       "currentValue": "",
       "secret": false
+    },
+    {
+      "key": "priceListId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "priceListItemId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "vipPriceListId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
     }
   ]
 }

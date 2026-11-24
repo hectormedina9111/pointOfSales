@@ -1402,7 +1402,323 @@
     },
     {
       "v": 2,
-      "name": "6. Auditoría",
+      "name": "6. Precios",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Crear lista mayoreo WHOLESALE (precio fijo)",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/price-lists",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"priceListId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"WHOLESALE\",\n  \"name\": \"Mayoreo\",\n  \"countryId\": \"<<countryId>>\",\n  \"pricingMethod\": \"FIXED_PRICE\",\n  \"percent\": null,\n  \"validFrom\": null,\n  \"validTo\": null,\n  \"priority\": 0,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio de mayoreo desde 1 unidad",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/price-lists/<<priceListId>>/items",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"priceListItemId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"productId\": \"<<productId>>\",\n  \"minQuantity\": 1,\n  \"price\": 25.00\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio de mayoreo desde 12 unidades",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/price-lists/<<priceListId>>/items",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"productId\": \"<<productId>>\",\n  \"minQuantity\": 12,\n  \"price\": 22.00\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio de mayoreo desde 100 unidades",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/price-lists/<<priceListId>>/items",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"productId\": \"<<productId>>\",\n  \"minQuantity\": 100,\n  \"price\": 20.00\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear lista VIP (10 % menos, vigencia 2026)",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/price-lists",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"vipPriceListId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"VIP\",\n  \"name\": \"Cliente VIP\",\n  \"countryId\": \"<<countryId>>\",\n  \"pricingMethod\": \"PERCENT_OFF_BASE\",\n  \"percent\": 10.00,\n  \"validFrom\": \"2026-01-01\",\n  \"validTo\": \"2026-12-31\",\n  \"priority\": 1,\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio con lista mayoreo, cantidad 1",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<priceListId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "1",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio con lista mayoreo, cantidad 12",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<priceListId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "12",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio con lista mayoreo, cantidad 100",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<priceListId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "100",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio VIP dentro de vigencia",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<vipPriceListId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "1",
+              "active": true
+            },
+            {
+              "key": "date",
+              "value": "2026-11-24",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio VIP fuera de vigencia (cae al precio base)",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "priceListId",
+              "value": "<<vipPriceListId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "1",
+              "active": true
+            },
+            {
+              "key": "date",
+              "value": "2027-02-01",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Asignar lista mayoreo a la sucursal",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/branches/<<branchId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"code\": \"001\",\n  \"name\": \"Tienda Centro\",\n  \"address\": \"Colonia Palmira, Tegucigalpa\",\n  \"phone\": \"2222-0001\",\n  \"countryId\": \"<<countryId>>\",\n  \"allowNegativeStock\": false,\n  \"active\": true,\n  \"defaultPriceListId\": \"<<priceListId>>\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Precio por sucursal (lista por defecto), cantidad 12",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/products/<<productId>>/price",
+          "params": [
+            {
+              "key": "branchId",
+              "value": "<<branchId>>",
+              "active": true
+            },
+            {
+              "key": "quantity",
+              "value": "12",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "7. Auditoría",
       "folders": [],
       "requests": [
         {
@@ -1494,7 +1810,7 @@
     },
     {
       "v": 2,
-      "name": "7. Errores de ejemplo",
+      "name": "8. Errores de ejemplo",
       "folders": [],
       "requests": [
         {

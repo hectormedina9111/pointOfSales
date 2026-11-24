@@ -4,7 +4,7 @@ Creado: 16 de octubre de 2026 · Actualizado: 2 de noviembre de 2026
 
 ## Resumen y alcance
 
-La fase 1 entrega un backend REST de punto de venta (POS) en Spring Boot 4.1.1 y Java 25, organizado como monolito modular al estilo de Salespoint. El frontend queda para una fase posterior y consumirá esta API.
+La fase 1 entrega un backend REST de punto de venta (POS) en Spring Boot 4.1.1 y Java 25, organizado como monolito modular al estilo de Salespoint. El frontend queda para una fase posterior y consumirá esta API. Decisión del 24 de noviembre de 2026: el frontend se hará en Angular, como proyecto aparte, cuando el backend esté completo.
 
 **Objetivo.** Registrar ventas en caja de forma rápida, descontar inventario automáticamente, emitir comprobantes y llevar el control de caja, usuarios y reportes básicos.
 
@@ -1273,3 +1273,28 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - Los indicadores booleanos omitidos en las peticiones toman un valor por defecto: `active = true`, `tracksInventory = true`, `tracksSerials = false`, `requiresExclusiveInvoice = false`, `allowsDecimals = false`, `productType = GOOD`.
 - Mensajes: los textos que ve el usuario van en `messages.properties` (inglés) y `messages_es.properties` (español), bajo la clave `error.<CODIGO>`. `GlobalExceptionHandler` los resuelve con el idioma de la petición; sin `Accept-Language`, `spring.web.locale` usa español. Pendiente: los textos de los módulos organización y seguridad siguen escritos en el código y se migrarán cuando se pida. En el paso 4, el mensaje escrito en el código sirve de respaldo si falta la traducción.
 - Códigos de error nuevos: `CATEGORY_CYCLE`, `CATEGORY_IN_USE`, `CATEGORY_NOT_FOUND`, `DUPLICATE_UNIT_CODE`, `UNIT_NOT_FOUND`, `UNIT_INACTIVE`, `INVALID_TAX_RATE`, `DUPLICATE_TAX_CODE`, `TAX_NOT_FOUND`, `TAX_INACTIVE`, `TAX_IN_USE`, `TAX_COUNTRY_MISMATCH`, `TAX_COUNTRY_IMMUTABLE`, `DUPLICATE_SKU`, `DUPLICATE_BARCODE`, `SERVICE_WITH_SERIALS`, `SERIALS_REQUIRE_INVENTORY`, `SERIALS_REQUIRE_WHOLE_UNIT`, `NEGATIVE_AMOUNT`, `NEGATIVE_QUANTITY`, `DUPLICATE_PRODUCT_TAX_COUNTRY` (422), y `COUNTRY_INACTIVE` (compartido con organización).
+
+### Decisiones de implementación: paso 5 (precios)
+
+- Migración `V7__pricing.sql`: crea `price_list` y `price_list_item` según el plan, con columnas de auditoría, `version` y las restricciones del plan. Además:
+  - `price_list.percent` es obligatorio con `PERCENT_OFF_BASE`, y `valid_to` no puede ser anterior a `valid_from`; la base de datos lo verifica también con `CHECK`.
+  - `ALTER TABLE branch ADD CONSTRAINT fk_branch_default_price_list`, la clave foránea que el paso 3 dejó pendiente.
+- Vigencia en `DATE`, como indica el plan. `CLAUDE.md` dice que las fechas son `TIMESTAMPTZ`; aquí se sigue el plan porque la vigencia es un día del calendario y no un instante. Pendiente de confirmar.
+- Las listas y las escalas guardan `country_id` y `product_id` como ids (`BIGINT`), sin entidades de otros módulos. El módulo de precios no toca las tablas ni las clases internas de catálogo u organización.
+- Contratos entre módulos, en la raíz de cada uno, con su implementación en `application`:
+  - `catalog.ProductPricingCatalog.find(productId, countryId)` devuelve `ProductPricingInfo`. La tasa es la de `product_tax` para ese país y, si no hay fila, la del producto.
+  - `organization.BranchDirectory.find(branchId)` devuelve `BranchPricingInfo` (país y lista por defecto).
+- Un porcentaje con `FIXED_PRICE` se descarta (queda en `NULL`) en lugar de rechazarse, igual que `tracksInventory` en un servicio.
+- Las escalas solo existen en listas `FIXED_PRICE`. No se puede cambiar una lista con escalas a `PERCENT_OFF_BASE` (`ITEMS_REQUIRE_FIXED_PRICE`).
+- Un producto debe existir en el país de la lista para tener una escala (`PRODUCT_NOT_FOUND`). Un producto inactivo no tiene precio de venta (`PRODUCT_INACTIVE`, 422).
+- Resolución de precio (`PriceResolver` y `TaxBreakdown` en `domain`, sin acceso a la base de datos):
+  - Una cantidad menor que la primera escala usa el precio base, aunque la lista exista.
+  - `priceListId` se usa si se indica; si no, la lista por defecto de la sucursal. El país sale de la lista o, sin lista, de la sucursal. Sin ninguna de las dos responde `PRICE_CONTEXT_REQUIRED`.
+  - Si se indica `branchId`, la sucursal debe estar entre las del usuario; si no, responde 404, igual que el módulo de organización.
+  - Sin `date`, se usa el día actual en UTC del reloj de la aplicación. Pendiente: en Honduras (UTC-6) cerca de la medianoche el día puede cambiar; conviene pasar la fecha desde la caja.
+  - `priority` se guarda, pero la resolución no lo usa todavía: la lista ya se elige de forma explícita (cliente o sucursal).
+- Las sucursales aceptan `defaultPriceListId` en `POST` y `PUT`. Un id que no existe provoca el error de clave foránea al guardar y se responde `PRICE_LIST_NOT_FOUND` (422). Pendiente: no se valida que la lista sea del mismo país que la sucursal, porque el plan no lo pide.
+- Los ítems se borran de verdad (`DELETE` responde 204), porque no son catálogo. La bitácora conserva el precio anterior en `PRICE_LIST_ITEM_DELETED`.
+- La auditoría guarda las fechas de vigencia como texto ISO (`2026-01-01`) para no depender del formato JSON de la bitácora.
+- Códigos de error nuevos: `DUPLICATE_PRICE_LIST_CODE`, `INVALID_PERCENT`, `INVALID_VALIDITY`, `INVALID_MIN_QUANTITY`, `DUPLICATE_PRICE_SCALE`, `ITEMS_REQUIRE_FIXED_PRICE`, `PRODUCT_NOT_FOUND`, `PRODUCT_INACTIVE`, `PRICE_CONTEXT_REQUIRED`, `INVALID_QUANTITY` y `PRICE_LIST_NOT_FOUND` (todos 422). `COUNTRY_INACTIVE` y `NEGATIVE_AMOUNT` se reutilizan.
+- Privilegios: los endpoints nuevos se registran solos y ADMIN los recibe. MANAGER empieza sin privilegios, como en el catálogo; el administrador se los asigna.
