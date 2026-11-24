@@ -92,6 +92,13 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - Los precios incluyen ISV. Cambiar el precio o el costo de un producto deja un evento `PRICE_CHANGED` en la bitácora, además del cambio normal.
 - Un servicio (`productType: SERVICE`) nunca controla inventario ni seriales. Los seriales exigen inventario y una unidad sin decimales.
 
+## Precios
+
+- Las listas de precios se mantienen en la central: `GET/POST/PUT /api/v1/price-lists` (`/price-lists/{id}` para una), con filtros `countryId` y `active`. Una lista es `FIXED_PRICE` (precio por producto) o `PERCENT_OFF_BASE` (descuento sobre el precio base, con `percent` de 0 a 100). Todos los precios incluyen ISV.
+- Las escalas de mayoreo son los precios por producto de una lista `FIXED_PRICE`: `GET/POST/PUT/DELETE /api/v1/price-lists/{id}/items` (filtro `productId`). Cada escala empieza en `minQuantity` (1 por defecto) y no se repite para el mismo producto. `DELETE` borra la fila; la bitácora guarda el precio anterior.
+- Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe estar asignada al usuario. La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId` (vacío si se usó el precio base).
+- La lista por defecto de cada sucursal es `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
+
 ## Simular un corte de internet
 
 Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):

@@ -4,7 +4,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 | Archivo | Qué es |
 |---|---|
-| `pos-api.hoppscotch.json` | Colección "POS API" con 69 peticiones en 7 carpetas. |
+| `pos-api.hoppscotch.json` | Colección "POS API" con 81 peticiones en 8 carpetas. |
 | `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://localhost:8080`. |
 | `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://localhost:8081`. |
 
@@ -37,10 +37,10 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 ## Cómo recorrer la colección
 
-- Sigue las carpetas en orden, de la 1 a la 7. Cada petición de creación guarda el `id` en el entorno para usarlo en las siguientes.
+- Sigue las carpetas en orden, de la 1 a la 8. Cada petición de creación guarda el `id` en el entorno para usarlo en las siguientes.
 - **Token:** el token de acceso dura 15 minutos. Cuando una petición responda 401, ejecuta **2. Sesión → Refrescar token**.
 - **Sucursales visibles:** `GET /branches` solo muestra las sucursales asignadas al usuario. Después de crear la sucursal, ejecuta **4. Organización → Asignar sucursales al usuario admin**. La variable `userId` se toma de **2. Sesión → Mi perfil**.
-- **Carpeta 7:** son peticiones que deben fallar a propósito. El nombre indica el estado esperado (por ejemplo, `422 SKU repetido`). Si una de ellas no falla, revisa los datos creados antes.
+- **Carpeta 8:** son peticiones que deben fallar a propósito. El nombre indica el estado esperado (por ejemplo, `422 SKU repetido`). Si una de ellas no falla, revisa los datos creados antes.
 - **Logout:** deja la petición **Logout** para el final. Revoca el refresh token.
 
 ## Tienda (puerto 8081)

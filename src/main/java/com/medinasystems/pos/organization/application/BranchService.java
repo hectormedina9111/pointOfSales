@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -68,7 +69,7 @@ public class BranchService {
         }
         Branch branch = new Branch(company, country, data.code(), data.name(), data.address(), data.phone(),
                 data.allowNegativeStock(), data.active(), data.defaultPriceListId());
-        Branch saved = branches.save(branch);
+        Branch saved = saveChecking(branch, data.defaultPriceListId());
         events.publishEvent(AuditEvent.created("BRANCH_CREATED", "branch", saved.getId(), snapshot(saved)));
         return BranchView.from(saved);
     }
@@ -82,8 +83,24 @@ public class BranchService {
         }
         branch.update(country, data.code(), data.name(), data.address(), data.phone(),
                 data.allowNegativeStock(), data.active(), data.defaultPriceListId());
+        saveChecking(branch, data.defaultPriceListId());
         events.publishEvent(AuditEvent.updated("BRANCH_UPDATED", "branch", id, before, snapshot(branch)));
         return BranchView.from(branch);
+    }
+
+    /**
+     * Flushes the branch now so the foreign key of {@code default_price_list_id} is checked here.
+     * A missing price list is reported as PRICE_LIST_NOT_FOUND; other violations are not translated.
+     */
+    private Branch saveChecking(Branch branch, Long defaultPriceListId) {
+        try {
+            return branches.saveAndFlush(branch);
+        } catch (DataIntegrityViolationException ex) {
+            if (defaultPriceListId == null) {
+                throw ex;
+            }
+            throw new BusinessRuleException("PRICE_LIST_NOT_FOUND", "The default price list does not exist");
+        }
     }
 
     private Set<Long> visibleIds() {
