@@ -7,6 +7,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.medinasystems.pos.security.LoginPolicy;
 import com.medinasystems.pos.security.domain.AppUser;
 import com.medinasystems.pos.security.domain.RefreshToken;
 import com.medinasystems.pos.security.domain.Role;
@@ -27,14 +28,16 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokens;
     private final TokenService tokens;
     private final PasswordEncoder passwordEncoder;
+    private final LoginPolicy loginPolicy;
     private final Clock clock;
 
     public AuthService(AppUserRepository users, RefreshTokenRepository refreshTokens, TokenService tokens,
-                       PasswordEncoder passwordEncoder, Clock clock) {
+                       PasswordEncoder passwordEncoder, LoginPolicy loginPolicy, Clock clock) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.tokens = tokens;
         this.passwordEncoder = passwordEncoder;
+        this.loginPolicy = loginPolicy;
         this.clock = clock;
     }
 
@@ -56,6 +59,8 @@ public class AuthService {
             user.recordFailedLogin(now);
             throw new InvalidCredentialsException();
         }
+        // Checked after the password, so a wrong password never reveals the node's rules.
+        loginPolicy.checkCanLogin(user.getId(), user.getBranchIds());
         user.recordSuccessfulLogin(now);
         return issueTokens(user, now);
     }
@@ -68,6 +73,7 @@ public class AuthService {
         if (!stored.isActive(now) || !stored.getUser().isActive()) {
             throw new InvalidCredentialsException(INVALID_REFRESH_TOKEN);
         }
+        loginPolicy.checkCanLogin(stored.getUser().getId(), stored.getUser().getBranchIds());
         stored.revoke(now);
         return issueTokens(stored.getUser(), now);
     }

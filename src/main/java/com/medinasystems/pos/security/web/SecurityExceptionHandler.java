@@ -8,6 +8,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.medinasystems.pos.security.LoginNotAllowedException;
 import com.medinasystems.pos.security.application.AccountLockedException;
 import com.medinasystems.pos.security.application.InvalidCredentialsException;
 
@@ -26,6 +27,17 @@ public class SecurityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED,
                 messages.getMessage("error.INVALID_CREDENTIALS", null, LocaleContextHolder.getLocale()));
         problem.setTitle(messages.getMessage("title.INVALID_CREDENTIALS", null, LocaleContextHolder.getLocale()));
+        return problem;
+    }
+
+    /** The password was right, but this node does not serve the user (for example, a store and another branch). */
+    @ExceptionHandler(LoginNotAllowedException.class)
+    public ProblemDetail handleLoginNotAllowed(LoginNotAllowedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,
+                messages.getMessage("error." + ex.getCode(), null, ex.getMessage(),
+                        LocaleContextHolder.getLocale()));
+        problem.setTitle(messages.getMessage("title.FORBIDDEN", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", ex.getCode());
         return problem;
     }
 

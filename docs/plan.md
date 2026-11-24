@@ -1298,3 +1298,82 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - La auditoría guarda las fechas de vigencia como texto ISO (`2026-01-01`) para no depender del formato JSON de la bitácora.
 - Códigos de error nuevos: `DUPLICATE_PRICE_LIST_CODE`, `INVALID_PERCENT`, `INVALID_VALIDITY`, `INVALID_MIN_QUANTITY`, `DUPLICATE_PRICE_SCALE`, `ITEMS_REQUIRE_FIXED_PRICE`, `PRODUCT_NOT_FOUND`, `PRODUCT_INACTIVE`, `PRICE_CONTEXT_REQUIRED`, `INVALID_QUANTITY` y `PRICE_LIST_NOT_FOUND` (todos 422). `COUNTRY_INACTIVE` y `NEGATIVE_AMOUNT` se reutilizan.
 - Privilegios: los endpoints nuevos se registran solos y ADMIN los recibe. MANAGER empieza sin privilegios, como en el catálogo; el administrador se los asigna.
+
+### Decisiones de implementación: paso 6A (alta de tiendas)
+
+Alcance: registro de tiendas en la central, activación, credenciales de la tienda y rangos de ids. La réplica de datos maestros, el latido y la subida de documentos quedan para los pasos siguientes.
+
+**Base de datos (`V8__store_nodes.sql`)**
+
+- `store_node` sigue el plan, con estas desviaciones:
+  - `activation_code_hash` es `VARCHAR(64)` (SHA-256 en hexadecimal) en lugar de `VARCHAR(255)`.
+  - Se agrega `credential_hash VARCHAR(64) UNIQUE`: el hash del token permanente de la tienda. El plan no lo nombraba, pero hace falta para autenticar.
+  - `status` tiene `CHECK` con `PENDING`, `ACTIVE`, `OUT_OF_SYNC` y `DISABLED`. `OUT_OF_SYNC` no lo asigna ningún código todavía: lo hará el latido.
+  - `node_number` tiene `CHECK (>= 1)`, y el rango tiene `CHECK (end > start)`.
+  - `branch_id` es `UNIQUE`: una sucursal tiene como máximo una tienda.
+- La central no es una fila de `store_node`. El nodo 0 es la propia central, con ids de 1 a 999 999 999, y ese rango está en el código.
+- `store_identity` es la tabla local de la tienda, con una sola fila. Sin claves foráneas a `store_node` ni a `branch`, porque esas tablas llegan por replicación en el paso siguiente.
+- `store_identity.store_token` se guarda en claro, porque la tienda lo necesita para llamar a la central. La base de datos de la tienda no sale del servidor de la tienda.
+- `snapshot_completed_at` y `last_applied_version` quedan en la tabla, sin uso todavía: los usará la carga inicial.
+
+**Rangos de ids**
+
+- Tienda N: inicio `N × 1 000 000 000 + 1`, fin `N × 1 000 000 000 + 999 999 999`. Ejemplo: la tienda 1 va de 1 000 000 001 a 1 999 999 999.
+- El número se asigna como `máximo + 1`, empezando en 1. Con dos alta simultáneas, una de las dos choca con la unicidad de `node_number` y responde 500. No se maneja todavía.
+- `node_number` es `SMALLINT`, así que el límite es 32 767. Más allá se responde `STORE_NODE_LIMIT_REACHED` (422).
+- `IdRangeSequenceAdjuster` recorre todas las tablas del esquema con una columna `id` de identidad (excepto `flyway_schema_history`) y pone cada secuencia en `max(inicio, máximo del rango + 1)`. Puede retroceder una secuencia sobre ids que nunca se confirmaron. Si el nombre de una tabla no pasa la expresión regular `^[a-z_][a-z0-9_]*$`, el proceso falla en lugar de saltarse la tabla. Si el rango se agota, también falla.
+
+**Códigos y tokens**
+
+- Código de activación: 16 caracteres del alfabeto `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (31 símbolos, sin I, L, O, 0 ni 1), generados con `SecureRandom`. Vence en 24 horas y se usa una sola vez: al canjearse se borra su hash.
+- Token permanente: 32 bytes aleatorios en base64url, sin relleno. La central guarda solo su SHA-256.
+- Un código se puede pedir de nuevo para una tienda activa, por ejemplo para reinstalarla. La reactivación reemplaza el token anterior y reinicia `activated_at`.
+- Revocar: `credential_revoked_at` se llena, el estado pasa a `DISABLED`, el token se borra y la sucursal se libera (`branch_id` queda en `NULL`), para que otra tienda pueda tomarla. El hash del código, si existe, se conserva: el canje devuelve `STORE_REVOKED`. Revocar dos veces no hace nada. Una tienda revocada no se reactiva.
+- Errores de activación `INVALID_ACTIVATION_CODE` y `STORE_REVOKED`: 422 (`BusinessRuleException`). Un código ya usado es un código desconocido.
+- Hashes con SHA-256 simple, sin sal. Los secretos son aleatorios y largos, así que no se pueden adivinar a partir del hash.
+- Ningún log ni auditoría contiene el código ni el token. La auditoría de la central registra `STORE_NODE_CREATED`, `STORE_NODE_ACTIVATION_CODE_CREATED`, `STORE_NODE_ACTIVATED` y `STORE_NODE_REVOKED`. La tienda registra `STORE_ACTIVATED`.
+
+**Autenticación de la tienda**
+
+- Cabecera `X-Store-Token`. El filtro `StoreTokenAuthenticationFilter` se registra en `SyncWebConfig` para `/api/v1/sync/*`, con orden anterior a Spring Security. Está excluido en `/api/v1/sync/activate` y `/api/v1/sync/status`. Sin token válido responde 401 `STORE_UNAUTHORIZED`.
+- Si el token es válido, el filtro guarda el id de la tienda en el atributo `posStoreNodeId`.
+- Spring Security deja pasar `/api/v1/sync/**` sin usuario (`permitAll`), salvo `GET /api/v1/sync/status`, que exige un token de usuario. Cualquier ruta nueva bajo `/api/v1/sync/**` queda protegida solo si el filtro la cubre: revisar esa regla al agregar rutas de tienda.
+- `EndpointPrivileges` excluye de privilegio solo `/api/v1/sync/activate` y `/api/v1/sync/ping`. `/api/v1/sync/status` sí tiene privilegio ENDPOINT. Esto se aparta de "agregar `/api/v1/sync/**` como las rutas públicas": el estado de la tienda no debe quedar abierto a cualquier usuario autenticado.
+- El `ProblemJsonWriter` de seguridad es interno a su módulo. Por eso `sync/web` tiene `StoreProblemWriter`, una copia pequeña del mismo formato.
+
+**Solo central y solo lectura en la tienda**
+
+- Con `@CentralOnly` (403 `READ_ONLY_NODE` en la tienda): todo `/api/v1/store-nodes` (incluida la lectura, porque la lista de tiendas es dato de la central), `POST /api/v1/sync/activate`, `GET /api/v1/sync/ping` y `POST /api/v1/me/password`.
+- Consecuencia de `/me/password`: un usuario que debe cambiar la contraseña inicial lo hace en la central. La tienda no puede cambiarla hasta que el usuario llegue por replicación.
+- `GET /api/v1/sync/status`: en la central responde 200 con `node: "CENTRAL"` y el resto de los campos vacíos. En la tienda, `node: "STORE"` y `activated` indica si ya tiene identidad. Nunca incluye el token.
+
+**Activación de la tienda**
+
+- Al arrancar, la tienda activa se limita a ajustar sus secuencias. La que no está activada y tiene `POS_ACTIVATION_CODE` lanza la activación en un hilo virtual, para no bloquear el arranque.
+- Reintentos cada 10 segundos, hasta 30 intentos, solo si la central no responde (error de red). Si la central responde 4xx, se deja de intentar y el log lo indica. Si se agotan los intentos, hay que reiniciar la tienda.
+- Si el número que asigna la central no coincide con `pos.node.number`, la identidad no se guarda y el log lo registra como error.
+- Riesgo sin resolver: si la central acepta el código y luego falla la escritura de `store_identity`, el código queda consumido y el token se pierde. No se maneja todavía.
+
+**Desarrollo local**
+
+- `pos.sync.dev-activation-codes` (`POS_DEV_ACTIVATION_CODES`) hace que la central cree o actualice las tiendas indicadas al arrancar. Solo crea la tienda y prepara el código si la tienda no está activada ni revocada. Renueva el vencimiento en cada arranque. Las tiendas creadas así no tienen sucursal. El log dice solo el número de tienda, nunca el código.
+- `docker-compose.yml` y `.env.example` traen los valores de desarrollo. En producción no se usan.
+
+**Control de acceso al iniciar sesión**
+
+- `security.LoginPolicy` (API pública de seguridad) con una implementación por defecto que permite todo (`DefaultLoginPolicy`). La tienda usa `sync.StoreLoginPolicy`, marcada como `@Primary` en el perfil `store`.
+- La tienda con `branch_id` solo deja entrar a usuarios que tengan esa sucursal en `user_branch`. Sin `branch_id`, deja entrar a cualquiera. Antes de activarse, no restringe nada, porque todavía no hay usuarios replicados.
+- La política se evalúa después de comprobar la contraseña, para que una contraseña errónea no revele las reglas de la tienda. También se evalúa al renovar el token de refresco, para que un cambio de sucursal tenga efecto.
+- Denegado: `LoginNotAllowedException("STORE_BRANCH_NOT_ALLOWED")`, con 403 y `code` en el cuerpo.
+
+**Otros cambios**
+
+- `BranchDirectory.exists(branchId)` en la API pública de organización, para validar la sucursal al registrar una tienda (`BRANCH_NOT_FOUND`, 422).
+- Respuestas JSON comprimidas con gzip desde 2 KB (`server.compression`), para la sincronización futura.
+- Sin cambios en `sync_change_log`: las tiendas no son datos maestros, así que su alta no se replica todavía.
+
+**Pendiente o no verificado**
+
+- No se compiló ni se ejecutó: el entorno de esta sesión no tiene Maven ni las dependencias. Solo se comprobó la sintaxis con `javac`.
+- No hay pruebas, como exige la primera etapa del proyecto.
+- Falta la réplica de datos maestros (`sync_change_log`, descarga inicial), el latido (que asignará `OUT_OF_SYNC`) y la subida de documentos.

@@ -20,6 +20,7 @@ import com.medinasystems.pos.security.application.AuthService;
 import com.medinasystems.pos.security.application.MenuItem;
 import com.medinasystems.pos.security.application.PrivilegeService;
 import com.medinasystems.pos.security.application.UserProfile;
+import com.medinasystems.pos.shared.CentralOnly;
 
 /** Endpoints for the signed-in user. Available even when a password change is pending. */
 @RestController
@@ -39,8 +40,13 @@ public class MeController {
         return auth.profile(jwt.getSubject());
     }
 
+    /**
+     * Users are owned by the central node, so a store answers 403 READ_ONLY_NODE. A user who must change
+     * the initial password therefore changes it on the central node.
+     */
     @PostMapping("/password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @CentralOnly
     public void changePassword(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody PasswordChangeRequest request) {
         auth.changePassword(jwt.getSubject(), request.currentPassword(), request.newPassword());
     }

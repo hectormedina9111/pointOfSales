@@ -21,6 +21,12 @@ public class DefaultBranchDirectory implements BranchDirectory {
 
     @Override
     @Transactional(readOnly = true)
+    public boolean exists(long branchId) {
+        return branches.existsById(branchId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<BranchPricingInfo> find(long branchId) {
         return branches.findById(branchId).map(branch -> new BranchPricingInfo(branch.getId(),
                 branch.getCountry().getId(), branch.getDefaultPriceListId()));
