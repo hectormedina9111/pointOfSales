@@ -93,6 +93,7 @@ Reglas para la segunda etapa:
 - Al terminar un paso: push de la rama y Pull Request hacia `main`, con descripción de los requerimientos cubiertos y cómo probarlos.
 - El CI (GitHub Actions) debe pasar antes de unir el PR.
 - No empezar el siguiente paso hasta que el PR esté revisado y unido a `main`.
+- Excepción autorizada por el responsable: cuando él lo pide (por ejemplo, para avanzar mientras no está), los pasos siguientes se encadenan en PRs apilados: cada rama sale de la rama del paso anterior y su PR apunta a esa rama. Se revisan y se unen en orden.
 
 ## Límite de uso del plan
 

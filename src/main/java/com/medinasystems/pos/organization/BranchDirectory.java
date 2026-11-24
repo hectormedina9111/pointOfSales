@@ -10,4 +10,7 @@ public interface BranchDirectory {
 
     /** The branch with what pricing needs from it. Empty when the branch does not exist. */
     Optional<BranchPricingInfo> find(long branchId);
+
+    /** True when a branch with this id exists. */
+    boolean exists(long branchId);
 }

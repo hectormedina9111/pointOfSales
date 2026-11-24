@@ -99,6 +99,26 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe estar asignada al usuario. La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId` (vacío si se usó el precio base).
 - La lista por defecto de cada sucursal es `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
 
+## Tiendas y activación
+
+Cada tienda tiene su propio servidor y se activa ante la central una sola vez. La tienda siempre llama a la central; la central nunca llama a la tienda. Cuando la tienda se activa, la central le asigna su número y su rango de ids (tienda N: desde N × 1 000 000 000 + 1).
+
+**En local (Vagrant y Docker Compose).** La central crea al arrancar las tiendas 1 y 2 con los códigos de `POS_DEV_ACTIVATION_CODES` (por defecto `1:STORE1-DEV-CODE,2:STORE2-DEV-CODE`). Cada tienda toma su código de `POS_ACTIVATION_CODE` (`POS_STORE1_ACTIVATION_CODE` y `POS_STORE2_ACTIVATION_CODE` en `.env`) y se activa sola al arrancar, en segundo plano. Para comprobarlo, mira el log de la tienda (`Store node 1 activated`) o pregunta a `GET http://localhost:8081/api/v1/sync/status`. Los códigos de desarrollo son solo para local: en producción no se usan.
+
+**Alta de una tienda real.**
+
+1. En la central, un administrador registra la tienda: `POST /api/v1/store-nodes` con `{"branchId": <id de la sucursal>}` (o `null`). La respuesta trae `nodeNumber` y el rango de ids.
+2. Genera el código de activación: `POST /api/v1/store-nodes/{id}/activation-code`. El código se muestra una sola vez y vence en 24 horas.
+3. En el servidor de la tienda, configura el perfil `store`, la base de datos y estas variables:
+   - `POS_NODE_NUMBER`: el `nodeNumber` que asignó la central. Si no coincide, la tienda no guarda su identidad.
+   - `POS_CENTRAL_URL`: la dirección de la central, por ejemplo `https://central.empresa.com`.
+   - `POS_ACTIVATION_CODE`: el código del paso 2.
+4. Arranca la tienda. Se activa en segundo plano y, una vez activada, guarda su identidad en `store_identity`. A partir de ahí `POS_ACTIVATION_CODE` ya no se usa y puede quitarse. Si la central no responde, la tienda reintenta cada 10 segundos durante unos 5 minutos; si el código venció o fue rechazado, el log lo indica y hay que generar otro código.
+
+**Revocar una tienda.** `POST /api/v1/store-nodes/{id}/revoke` deja de aceptar su token de inmediato y libera su sucursal. Una tienda revocada no vuelve a activarse: para reemplazarla se registra una tienda nueva.
+
+**Token de la tienda.** Las llamadas de la tienda a la central llevan la cabecera `X-Store-Token`. La central guarda solo su SHA-256; la tienda lo guarda en claro en `store_identity`, en su propia base de datos local.
+
 ## Simular un corte de internet
 
 Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):

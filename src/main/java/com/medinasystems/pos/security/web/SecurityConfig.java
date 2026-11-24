@@ -43,6 +43,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/system/info", "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/actuator/health/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // Sync routes: the status route needs a user token; the rest are authenticated
+                        // by the store token in StoreTokenAuthenticationFilter, or are public (activation).
+                        .requestMatchers(HttpMethod.GET, "/api/v1/sync/status").authenticated()
+                        .requestMatchers("/api/v1/sync/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.decoder(jwtDecoder).jwtAuthenticationConverter(jwtAuthenticationConverter()))

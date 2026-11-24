@@ -1718,7 +1718,149 @@
     },
     {
       "v": 2,
-      "name": "7. Auditoría",
+      "name": "7. Tiendas",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Listar tiendas",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes",
+          "params": [
+            {
+              "key": "page",
+              "value": "0",
+              "active": true
+            },
+            {
+              "key": "size",
+              "value": "20",
+              "active": true
+            },
+            {
+              "key": "sort",
+              "value": "nodeNumber,asc",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Registrar tienda",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"storeNodeId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"branchId\": null\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ver tienda",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes/<<storeNodeId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Generar código de activación",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes/<<storeNodeId>>/activation-code",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Revocar tienda",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes/<<storeNodeId>>/revoke",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Estado de sincronización (tienda)",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/sync/status",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "8. Auditoría",
       "folders": [],
       "requests": [
         {
@@ -1810,7 +1952,7 @@
     },
     {
       "v": 2,
-      "name": "8. Errores de ejemplo",
+      "name": "9. Errores de ejemplo",
       "folders": [],
       "requests": [
         {

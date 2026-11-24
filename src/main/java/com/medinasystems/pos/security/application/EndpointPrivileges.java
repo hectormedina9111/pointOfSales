@@ -14,8 +14,12 @@ public final class EndpointPrivileges {
     static final int NAME_MAX = 120;
     static final int MODULE_MAX = 30;
 
-    /** Public and self-service routes: they never need a privilege. */
-    private static final List<String> EXEMPT = List.of("/api/v1/auth", "/api/v1/system", "/api/v1/me");
+    /**
+     * Public and self-service routes: they never need a privilege. The two sync routes below are
+     * authenticated by other means: activation is public, and ping uses the store token (see sync/web).
+     */
+    private static final List<String> EXEMPT = List.of("/api/v1/auth", "/api/v1/system", "/api/v1/me",
+            "/api/v1/sync/activate", "/api/v1/sync/ping");
 
     private EndpointPrivileges() {
     }

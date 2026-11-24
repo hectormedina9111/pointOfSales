@@ -29,6 +29,11 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  compression:
+    # Respuestas JSON comprimidas con gzip (la sincronización con las tiendas las necesitará).
+    enabled: true
+    mime-types: application/json,application/problem+json
+    min-response-size: 2KB
 
 springdoc:
   api-docs:
@@ -43,6 +48,11 @@ pos:
       access-token-ttl: 15m
       refresh-token-ttl: 7d
     admin-initial-password: ${POS_ADMIN_INITIAL_PASSWORD:}
+  sync:
+    # Tienda: código para activarse ante la central (solo si la tienda aún no tiene identidad).
+    activation-code: ${POS_ACTIVATION_CODE:}
+    # Central, SOLO LOCAL: pares "numeroTienda:codigo" que se preparan al arrancar. Vacío en producción.
+    dev-activation-codes: ${POS_DEV_ACTIVATION_CODES:}
 
 management:
   endpoints:

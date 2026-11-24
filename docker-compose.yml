@@ -67,6 +67,8 @@ services:
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
       POS_JWT_SECRET: ${POS_JWT_SECRET:-dev-only-change-me-0123456789abcdefghij}
       POS_ADMIN_INITIAL_PASSWORD: ${POS_ADMIN_INITIAL_PASSWORD:-}
+      # Solo local: códigos de activación de desarrollo para las tiendas 1 y 2.
+      POS_DEV_ACTIVATION_CODES: ${POS_DEV_ACTIVATION_CODES:-1:STORE1-DEV-CODE,2:STORE2-DEV-CODE}
     ports:
       - "8080:8080"
     depends_on:
@@ -82,6 +84,8 @@ services:
       SPRING_PROFILES_ACTIVE: store
       POS_NODE_NUMBER: "1"
       POS_CENTRAL_URL: http://central-api:8080
+      # Solo local: código con el que la tienda 1 se activa al arrancar.
+      POS_ACTIVATION_CODE: ${POS_STORE1_ACTIVATION_CODE:-STORE1-DEV-CODE}
       POS_DB_URL: jdbc:postgresql://store1-db:5432/pos
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
@@ -103,6 +107,8 @@ services:
       SPRING_PROFILES_ACTIVE: store
       POS_NODE_NUMBER: "2"
       POS_CENTRAL_URL: http://central-api:8080
+      # Solo local: código con el que la tienda 2 se activa al arrancar.
+      POS_ACTIVATION_CODE: ${POS_STORE2_ACTIVATION_CODE:-STORE2-DEV-CODE}
       POS_DB_URL: jdbc:postgresql://store2-db:5432/pos
       POS_DB_USER: ${POS_DB_USER:-pos}
       POS_DB_PASSWORD: ${POS_DB_PASSWORD:-pos}
