@@ -1254,7 +1254,7 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 | Framework | Angular 22 con TypeScript en modo estricto | Versión estable actual; soporte activo hasta junio de 2027 y parches de seguridad hasta junio de 2028 |
 | Componentes y estilos | Bootstrap 5.3 con ng-bootstrap 21 (licencia MIT) | Gratis para uso comercial, compatible con Angular 22 y fácil de personalizar para pantallas de caja |
 | Descartado | PrimeNG | Desde la versión 22 su licencia es de pago para empresas que no son pequeñas |
-| Repositorio | Aparte: `pointOfSales-web` | Se comunica con el backend solo por la API; mismo flujo de ramas, PR y CI |
+| Repositorio | Aparte: `pointOfSales-frontend` | Se comunica con el backend solo por la API; mismo flujo de ramas, PR y CI |
 | Cliente de la API | Generado desde el OpenAPI del backend | Si cambia un endpoint, se regenera y el compilador avisa |
 | Idiomas | Español e inglés, español por defecto | La misma regla del backend; el idioma elegido viaja en `Accept-Language` |
 | Despliegue local | El `docker-compose.yml` del backend construye la web desde la carpeta vecina `../pointOfSales-frontend`, y el `Vagrantfile` comparte esa carpeta con la VM | Dos repositorios, un solo `vagrant up`; los dos repos se clonan uno al lado del otro |

@@ -21,7 +21,7 @@ Dentro de la carpeta del proyecto:
 vagrant up
 ```
 
-Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
+Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. Si el repositorio del frontend ([pointOfSales-frontend](https://github.com/hectormedina9111/pointOfSales-frontend)) está clonado al lado de este (`repositorios/pointOfSales` y `repositorios/pointOfSales-frontend`), también levanta la web en http://localhost:4200. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
 
 | Nodo     | API (puerto) | Base de datos (puerto) |
 |----------|--------------|------------------------|

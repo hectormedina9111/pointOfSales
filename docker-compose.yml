@@ -124,6 +124,23 @@ services:
       - wan
       - store2-lan
 
+  # Frontend (repositorio pointOfSales-frontend, clonado al lado de este). Solo con
+  # "docker compose --profile web ...". Su nginx reenvía /central/, /tienda1/ y /tienda2/
+  # a cada API; está en las redes locales para seguir viendo cada tienda durante un corte.
+  web:
+    profiles: ["web"]
+    build: ../pointOfSales-frontend
+    image: medinasystems/pos-web:dev
+    ports:
+      - "4200:80"
+    depends_on:
+      - central-api
+    networks:
+      - wan
+      - central-lan
+      - store1-lan
+      - store2-lan
+
 volumes:
   central-db-data:
   store1-db-data:
