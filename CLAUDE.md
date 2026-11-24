@@ -64,7 +64,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 ## Seguridad
 
 - Contraseñas con BCrypt o Argon2. Token de acceso JWT de 15 minutos y token de refresco revocable.
-- **Administrador inicial:** su contraseña nunca va en el código ni en las migraciones. Se toma de la variable de entorno `POS_ADMIN_INITIAL_PASSWORD`; si no existe, se genera al instalar y se muestra una sola vez en el log de arranque. El sistema obliga a cambiarla en el primer ingreso.
+- **Administrador inicial:** su contraseña nunca va en el código ni en las migraciones. Se toma de la variable de entorno `POS_ADMIN_INITIAL_PASSWORD`; si no existe, se genera al instalar y se muestra una sola vez en el log de arranque. El sistema obliga a cambiarla en el primer ingreso. Solo en el entorno local, `.env.example` trae una contraseña de desarrollo que Vagrant copia a `.env`; en producción nunca se usa ese archivo.
 - Nunca registrar en logs contraseñas, tokens, PIN ni números de tarjeta.
 - Nunca subir secretos al repositorio: usar `.env` (ignorado) y `.env.example` con valores de desarrollo.
 

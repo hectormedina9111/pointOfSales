@@ -28,7 +28,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
    vagrant ssh -c "cd /vagrant && docker compose logs central-api | grep -i password"
    ```
 
-   La contraseña se muestra una sola vez. Si `POS_ADMIN_INITIAL_PASSWORD` estaba definida en `.env`, usa ese valor.
+   La contraseña se muestra una sola vez. Si `POS_ADMIN_INITIAL_PASSWORD` estaba definida en `.env`, usa ese valor. En local con Vagrant es `Admin.Local.2026` (viene de `.env.example`).
 
 2. En el entorno, pon la contraseña en la variable `adminPassword`.
 3. Ejecuta **2. Sesión → Login**. Las variables `accessToken` y `refreshToken` se llenan solas.
