@@ -1243,6 +1243,55 @@ Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organi
 
 **Entregables:** el repositorio con el código, el Vagrantfile, el `docker-compose.yml`, las migraciones Flyway, el contrato OpenAPI, la colección de ejemplos de la API y un README para levantar el proyecto.
 
+## MVP del frontend (Angular)
+
+El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `main` el 24 de noviembre de 2026. Para poder crear registros y ver cómo se replican a las tiendas, el siguiente MVP es el frontend. Las pruebas automatizadas del backend (etapa 2) quedan para después del frontend.
+
+### Decisiones
+
+| Tema | Decisión | Motivo |
+| --- | --- | --- |
+| Framework | Angular 22 con TypeScript en modo estricto | Versión estable actual; soporte activo hasta junio de 2027 y parches de seguridad hasta junio de 2028 |
+| Componentes y estilos | Bootstrap 5.3 con ng-bootstrap 21 (licencia MIT) | Gratis para uso comercial, compatible con Angular 22 y fácil de personalizar para pantallas de caja |
+| Descartado | PrimeNG | Desde la versión 22 su licencia es de pago para empresas que no son pequeñas |
+| Repositorio | Aparte: `pointOfSales-web` | Se comunica con el backend solo por la API; mismo flujo de ramas, PR y CI |
+| Cliente de la API | Generado desde el OpenAPI del backend | Si cambia un endpoint, se regenera y el compilador avisa |
+| Idiomas | Español e inglés, español por defecto | La misma regla del backend; el idioma elegido viaja en `Accept-Language` |
+| Despliegue | Imagen Docker con nginx, agregada al `docker-compose` de la VM | `vagrant up` levanta también la web |
+
+### Dentro del MVP del frontend
+
+- **Sesión:** login, cambio de contraseña obligatorio, renovación automática del token y cierre de sesión.
+- **Menú y permisos:** el menú se arma con `/me/menus`; los botones se muestran según `/me/privileges`.
+- **Selector de servidor:** central, tienda 1 o tienda 2, para ver la misma pantalla contra cada nodo y comprobar la réplica.
+- **Administración:** usuarios, roles, privilegios y sucursales asignadas a cada usuario.
+- **Organización:** países, empresa y sucursales.
+- **Catálogo:** categorías en árbol, unidades, impuestos y productos, con búsqueda por nombre, SKU o código de barras.
+- **Precios:** listas, escalas y un consultor de precio que muestra precio, base e ISV.
+- **Tiendas y réplica:** panel de tiendas en la central (conectada, cambios pendientes, último latido), estado de sincronización en la tienda y bitácora de auditoría.
+
+**Fuera del MVP del frontend:** pantalla de venta (caja), inventario, clientes, reportes e instalación como aplicación (PWA); llegan con sus módulos del backend.
+
+### Orden de trabajo del frontend
+
+1. **Base:** proyecto Angular 22 con Bootstrap y ng-bootstrap, cliente de la API generado, traducciones, Docker con nginx y CI.
+2. **Sesión y menú:** login, cambio de contraseña, token, menú por privilegios y selector de servidor.
+3. **Administración:** usuarios, roles, privilegios y sucursales por usuario.
+4. **Organización y catálogo:** países, empresa, sucursales, categorías, unidades, impuestos y productos.
+5. **Precios:** listas, escalas y consultor de precio.
+6. **Tiendas y réplica:** panel de tiendas, estado en la tienda y bitácora.
+7. **Cierre:** integración con Vagrant, README y revisión de criterios.
+
+### Criterios de aceptación del frontend
+
+- [ ] `vagrant up` levanta también la web y se abre en el navegador.
+- [ ] El administrador inicia sesión, cambia la contraseña y ve solo los menús que le corresponden; un usuario sin un privilegio no ve el botón de esa acción.
+- [ ] Se crean país, empresa, sucursal, categorías, impuesto, unidad y producto desde la web, y los errores del backend se muestran en el idioma elegido.
+- [ ] Un producto creado en la central aparece en la tienda 1 al cambiar el selector de servidor, en menos de un minuto.
+- [ ] El panel muestra la tienda 2 desconectada durante un corte de internet y al día cuando vuelve.
+- [ ] El consultor de precio muestra L 100.00 de base y L 15.00 de ISV para un producto de L 115.00 con ISV 15 %.
+- [ ] Las pantallas funcionan en español y en inglés, y en una tablet.
+
 ## Decisiones y preguntas abiertas
 
 Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas por cerrar antes de escribir código.
