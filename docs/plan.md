@@ -1237,3 +1237,13 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - [ ] Crédito: ¿hay intereses o recargos por mora? ¿Se aceptan abonos parciales en cualquier sucursal? ¿Se bloquea al cliente que excede su límite o se pide autorización? Sin conexión con la central, ¿cada tienda recibe un cupo de crédito o se exige conexión para vender al crédito?
 - [ ] Listas de precios: ¿se necesitan precios por cantidad (escalas de mayoreo) o promociones como 2x1 y combos?
 - [ ] Multipaís: ¿una empresa puede tener sucursales en varios países, o cada país es una empresa distinta?
+
+### Decisiones de implementación: paso 3 (organización y auditoría)
+
+- Las columnas `CHAR(n)` del modelo se implementan como `VARCHAR(n)` (`iso_code`, `currency`). `ddl-auto=validate` compara tipos y así coinciden con los campos `String` de JPA; el contenido y las restricciones no cambian.
+- `country` lleva también `name` y `tax_id_label`, tal como indica la tabla de este documento.
+- `branch.default_price_list_id` no tiene clave foránea hasta el paso 5, cuando existe `price_list`.
+- Códigos de error nuevos: `COUNTRY_INACTIVE`, `COUNTRY_NOT_FOUND`, `DUPLICATE_ISO_CODE`, `DUPLICATE_TAX_ID`, `DUPLICATE_BRANCH_CODE`, `COMPANY_NOT_CONFIGURED`, `BRANCH_NOT_FOUND` (422), y `READ_ONLY_NODE` (403 en la tienda).
+- Una sucursal que el usuario no ve responde 404 en lugar de 403, para no revelar que existe.
+- La creación de una sucursal asigna esa sucursal al usuario que la crea.
+- Los eventos de auditoría de cambios guardan solo los campos que cambiaron; las altas no tienen valores anteriores.

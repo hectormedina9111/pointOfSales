@@ -6,7 +6,9 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
@@ -59,6 +61,12 @@ public class AppUser extends AuditableEntity {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<Role> roles = new HashSet<>();
+
+    /** Branches this user can see. A user without branches sees none. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "user_branch", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "branch_id", nullable = false)
+    private Set<Long> branchIds = new HashSet<>();
 
     protected AppUser() {
     }
@@ -120,6 +128,21 @@ public class AppUser extends AuditableEntity {
         roles.add(role);
     }
 
+    /** Replaces the branches this user can see. */
+    public void assignBranches(Set<Long> newBranchIds) {
+        branchIds.clear();
+        branchIds.addAll(newBranchIds);
+    }
+
+    /** Adds one branch, keeping the others. */
+    public void addBranch(long branchId) {
+        branchIds.add(branchId);
+    }
+
+    public boolean hasBranch(Long branchId) {
+        return branchIds.contains(branchId);
+    }
+
     public String getUsername() {
         return username;
     }
@@ -150,5 +173,9 @@ public class AppUser extends AuditableEntity {
 
     public Set<Role> getRoles() {
         return Collections.unmodifiableSet(roles);
+    }
+
+    public Set<Long> getBranchIds() {
+        return Collections.unmodifiableSet(branchIds);
     }
 }

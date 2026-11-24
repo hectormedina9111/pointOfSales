@@ -1,9 +1,11 @@
 package com.medinasystems.pos.security.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
@@ -72,4 +74,26 @@ class AppUserTest {
 
         assertThat(user.isMustChangePassword()).isFalse();
     }
+
+    @Test
+    void assignBranchesReplacesThePreviousBranches() {
+        AppUser user = newUser();
+        user.assignBranches(Set.of(1L, 2L));
+
+        user.assignBranches(Set.of(3L));
+
+        assertThat(user.getBranchIds()).containsExactly(3L);
+        assertThat(user.hasBranch(1L)).isFalse();
+        assertThat(user.hasBranch(3L)).isTrue();
+    }
+
+    @Test
+    void branchIdsCannotBeModifiedFromOutside() {
+        AppUser user = newUser();
+        user.addBranch(5L);
+
+        assertThatThrownBy(() -> user.getBranchIds().add(6L)).isInstanceOf(UnsupportedOperationException.class);
+        assertThat(user.hasBranch(6L)).isFalse();
+    }
 }
+

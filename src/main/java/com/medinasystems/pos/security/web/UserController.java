@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.medinasystems.pos.security.application.UserService;
 import com.medinasystems.pos.security.application.UserView;
+import com.medinasystems.pos.shared.CentralOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
 
 @RestController
@@ -46,12 +47,14 @@ public class UserController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @CentralOnly
     public UserView create(@Valid @RequestBody CreateUserRequest request) {
         return users.create(request.username(), request.fullName(), request.email(), request.externalCode(),
                 request.roleCodes(), request.initialPassword());
     }
 
     @PutMapping("/{id}")
+    @CentralOnly
     public UserView update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest request) {
         return users.update(id, request.fullName(), request.email(), request.externalCode(), request.active(),
                 request.roleCodes());
@@ -59,8 +62,20 @@ public class UserController {
 
     @PostMapping("/{id}/password-reset")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @CentralOnly
     public void resetPassword(@PathVariable Long id, @Valid @RequestBody PasswordResetRequest request) {
         users.resetPassword(id, request.newPassword());
+    }
+
+    @GetMapping("/{id}/branches")
+    public List<Long> branches(@PathVariable Long id) {
+        return users.branchIds(id);
+    }
+
+    @PutMapping("/{id}/branches")
+    @CentralOnly
+    public List<Long> replaceBranches(@PathVariable Long id, @Valid @RequestBody ReplaceBranchesRequest request) {
+        return users.replaceBranches(id, request.branchIds());
     }
 
     public record CreateUserRequest(@NotBlank @Size(max = 50) String username,
@@ -79,5 +94,8 @@ public class UserController {
     }
 
     public record PasswordResetRequest(@NotBlank @Size(min = 10, max = 72) String newPassword) {
+    }
+
+    public record ReplaceBranchesRequest(@NotNull List<@NotNull Long> branchIds) {
     }
 }

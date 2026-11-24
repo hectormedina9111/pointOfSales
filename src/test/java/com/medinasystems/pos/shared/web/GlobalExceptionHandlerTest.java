@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.ProblemDetail;
 
 import com.medinasystems.pos.shared.BusinessRuleException;
+import com.medinasystems.pos.shared.ReadOnlyNodeException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
 class GlobalExceptionHandlerTest {
@@ -33,5 +34,14 @@ class GlobalExceptionHandlerTest {
         assertThat(problem.getTitle()).isEqualTo("Business rule violated");
         assertThat(problem.getDetail()).isEqualTo("SKU already exists");
         assertThat(problem.getProperties()).containsEntry("code", "product.sku.duplicated");
+    }
+
+    @Test
+    void mapsReadOnlyNodeTo403WithCode() {
+        ProblemDetail problem = handler.handleReadOnlyNode(new ReadOnlyNodeException());
+
+        assertThat(problem.getStatus()).isEqualTo(403);
+        assertThat(problem.getTitle()).isEqualTo("Read-only node");
+        assertThat(problem.getProperties()).containsEntry("code", "READ_ONLY_NODE");
     }
 }
