@@ -29,7 +29,7 @@ final class PasswordChangeRequiredFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         if (mustChangePassword() && !isAllowedWhilePending(request)) {
-            problems.write(request, response, HttpStatus.FORBIDDEN, "title.PASSWORD_CHANGE_REQUIRED",
+            problems.write(request, response, HttpStatus.FORBIDDEN, "PASSWORD_CHANGE_REQUIRED", "title.PASSWORD_CHANGE_REQUIRED",
                     "error.PASSWORD_CHANGE_REQUIRED");
             return;
         }

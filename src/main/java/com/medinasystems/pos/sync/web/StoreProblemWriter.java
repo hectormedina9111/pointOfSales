@@ -28,7 +28,7 @@ class StoreProblemWriter {
         this.messages = messages;
     }
 
-    void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status,
+    void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status, String code,
                String titleKey, String detailKey) throws IOException {
         Locale locale = request.getHeader(HttpHeaders.ACCEPT_LANGUAGE) == null ? DEFAULT_LOCALE : request.getLocale();
         String title = messages.getMessage(titleKey, null, locale);
@@ -36,8 +36,8 @@ class StoreProblemWriter {
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}"
-                .formatted(escape(title), status.value(), escape(detail)));
+        response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\"code\":\"%s\"}"
+                .formatted(escape(title), status.value(), escape(detail), escape(code)));
     }
 
     private static String escape(String value) {

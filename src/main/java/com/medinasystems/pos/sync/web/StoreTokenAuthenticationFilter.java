@@ -48,8 +48,8 @@ final class StoreTokenAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         Optional<StoreNode> store = findStore(request.getHeader(TOKEN_HEADER));
         if (store.isEmpty()) {
-            problems.write(request, response, HttpStatus.UNAUTHORIZED, "title.UNAUTHENTICATED",
-                    "error.STORE_UNAUTHORIZED");
+            problems.write(request, response, HttpStatus.UNAUTHORIZED, "STORE_UNAUTHORIZED",
+                    "title.UNAUTHENTICATED", "error.STORE_UNAUTHORIZED");
             return;
         }
         request.setAttribute(STORE_NODE_ATTRIBUTE, store.get().getId());

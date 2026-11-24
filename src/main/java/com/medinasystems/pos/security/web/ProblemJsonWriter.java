@@ -30,7 +30,7 @@ final class ProblemJsonWriter {
         this.messages = messages;
     }
 
-    void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status,
+    void write(HttpServletRequest request, HttpServletResponse response, HttpStatus status, String code,
                String titleKey, String detailKey, Object... args) throws IOException {
         Locale locale = localeOf(request);
         String title = messages.getMessage(titleKey, null, locale);
@@ -39,8 +39,8 @@ final class ProblemJsonWriter {
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         // Set before getWriter(), so the body is written in UTF-8 and the Spanish texts are not garbled.
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\"}"
-                .formatted(escape(title), status.value(), escape(detail)));
+        response.getWriter().write("{\"type\":\"about:blank\",\"title\":\"%s\",\"status\":%d,\"detail\":\"%s\",\"code\":\"%s\"}"
+                .formatted(escape(title), status.value(), escape(detail), escape(code)));
     }
 
     private static Locale localeOf(HttpServletRequest request) {

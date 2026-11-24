@@ -27,6 +27,7 @@ public class SecurityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED,
                 messages.getMessage("error.INVALID_CREDENTIALS", null, LocaleContextHolder.getLocale()));
         problem.setTitle(messages.getMessage("title.INVALID_CREDENTIALS", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", "INVALID_CREDENTIALS");
         return problem;
     }
 
@@ -46,6 +47,7 @@ public class SecurityExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatusCode.valueOf(423),
                 messages.getMessage("error.ACCOUNT_LOCKED", null, LocaleContextHolder.getLocale()));
         problem.setTitle(messages.getMessage("title.ACCOUNT_LOCKED", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", "ACCOUNT_LOCKED");
         return problem;
     }
 }

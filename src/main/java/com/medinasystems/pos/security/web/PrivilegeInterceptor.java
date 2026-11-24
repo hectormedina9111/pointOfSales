@@ -52,8 +52,8 @@ public class PrivilegeInterceptor implements HandlerInterceptor {
         if (userId != null && privileges.existsForUser(userId, method, pattern)) {
             return true;
         }
-        problems.write(request, response, HttpStatus.FORBIDDEN, "title.FORBIDDEN",
-                "error.MISSING_PRIVILEGE", method, pattern);
+        problems.write(request, response, HttpStatus.FORBIDDEN, "MISSING_PRIVILEGE",
+                "title.FORBIDDEN", "error.MISSING_PRIVILEGE", method, pattern);
         return false;
     }
 
