@@ -1,6 +1,7 @@
 package com.medinasystems.pos.security.web;
 
 import java.io.IOException;
+import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -23,7 +24,11 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import com.medinasystems.pos.security.application.CorsProperties;
 import com.medinasystems.pos.security.application.SecurityProperties;
 import com.medinasystems.pos.security.application.TokenService;
 
@@ -33,7 +38,13 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder,
-                                            ProblemJsonWriter problems) throws Exception {
+                                            ProblemJsonWriter problems, CorsProperties corsProperties,
+                                            CorsConfigurationSource corsConfigurationSource) throws Exception {
+        if (corsProperties.allowedOrigins().isEmpty()) {
+            http.cors(cors -> cors.disable());
+        } else {
+            http.cors(cors -> cors.configurationSource(corsConfigurationSource));
+        }
         http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -43,6 +54,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/system/info", "/swagger-ui.html", "/swagger-ui/**",
                                 "/v3/api-docs/**", "/actuator/health/**").permitAll()
                         .requestMatchers("/error").permitAll()
+                        // CORS preflight requests carry no credentials; the browser sends them before the real call.
+                        .requestMatchers(HttpMethod.OPTIONS, "/api/**").permitAll()
                         // Sync routes: the status route needs a user token; the rest are authenticated
                         // by the store token in StoreTokenAuthenticationFilter, or are public (activation).
                         .requestMatchers(HttpMethod.GET, "/api/v1/sync/status").authenticated()
@@ -56,6 +69,21 @@ public class SecurityConfig {
                         .accessDeniedHandler((request, response, ex) -> forbidden(problems, request, response)))
                 .addFilterAfter(new PasswordChangeRequiredFilter(problems), BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    /** CORS rules for {@code /api/**}; only used when {@code pos.cors.allowed-origins} is set. */
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(CorsProperties corsProperties) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(corsProperties.allowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Accept-Language",
+                "X-Store-Token"));
+        configuration.setAllowCredentials(false);
+        configuration.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
     }
 
     @Bean

@@ -21,13 +21,15 @@ Dentro de la carpeta del proyecto:
 vagrant up
 ```
 
-Crea la máquina virtual Ubuntu, instala Docker y levanta seis contenedores: la central, la tienda 1 y la tienda 2, cada una con su base de datos. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
+Crea la máquina virtual Ubuntu, instala Docker y levanta la central, la tienda 1 y la tienda 2, cada una con su base de datos y su API. Si el repositorio del frontend ([pointOfSales-frontend](https://github.com/hectormedina9111/pointOfSales-frontend)) está clonado al lado de este (`repositorios/pointOfSales` y `repositorios/pointOfSales-frontend`), también levanta la web de cada nodo. La primera vez tarda varios minutos. Si `.env` no existe, Vagrant lo crea desde `.env.example` (valores de desarrollo).
 
-| Nodo     | API (puerto) | Base de datos (puerto) |
-|----------|--------------|------------------------|
-| Central  | 8080         | 5432                   |
-| Tienda 1 | 8081         | 5433                   |
-| Tienda 2 | 8082         | 5434                   |
+| Nodo     | IP            | API (puerto) | Base de datos (puerto) | Web (puerto) |
+|----------|---------------|--------------|------------------------|--------------|
+| Central  | 192.168.56.10 | 8080         | 5432                   | 80           |
+| Tienda 1 | 192.168.56.11 | 8080         | 5432                   | 80           |
+| Tienda 2 | 192.168.56.12 | 8080         | 5432                   | 80           |
+
+Cada nodo tiene su propia IP y su web llama directamente a la API de ese mismo nodo, como si fueran tres máquinas distintas. Las webs están en http://192.168.56.10 (central), http://192.168.56.11 (tienda 1) y http://192.168.56.12 (tienda 2).
 
 Al arrancar, la central crea sola el país Honduras, la empresa de ejemplo, las unidades de medida (UNIT, KG, LB, LT) y los impuestos de Honduras (EXEMPT, ISV15, ISV18). No crea sucursales. Las tiendas 1 y 2 se activan solas y reciben una copia de los datos maestros.
 
@@ -40,11 +42,14 @@ Al arrancar, la central crea sola el país Honduras, la empresa de ejemplo, las 
 
 ### 4. Swagger
 
-- Central: http://localhost:8080/swagger-ui.html
-- Tienda 1: http://localhost:8081/swagger-ui.html
-- Tienda 2: http://localhost:8082/swagger-ui.html
+La máquina virtual tiene tres IPs privadas, una por nodo: `192.168.56.10` (central), `192.168.56.11` (tienda 1) y `192.168.56.12` (tienda 2), para no ocupar puertos de `localhost`. Si chocan con otra red de tu equipo, se cambian con las variables de entorno `POS_CENTRAL_IP`, `POS_STORE1_IP` y `POS_STORE2_IP` antes de `vagrant up`.
 
-Identidad de cada nodo: `GET /api/v1/system/info` (cambiar el puerto).
+
+- Central: http://192.168.56.10:8080/swagger-ui.html
+- Tienda 1: http://192.168.56.11:8080/swagger-ui.html
+- Tienda 2: http://192.168.56.12:8080/swagger-ui.html
+
+Identidad de cada nodo: `GET /api/v1/system/info` (cambiar la IP).
 
 ### 5. Colección Hoppscotch
 

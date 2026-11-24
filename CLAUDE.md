@@ -82,7 +82,7 @@ Reglas para la segunda etapa:
 ## Forma de trabajo
 
 - MVP del backend ("MVP: base y catálogos" en `docs/plan.md`): terminado el 24 de noviembre de 2026.
-- Alcance actual: **MVP del frontend** (ver "MVP del frontend (Angular)" en `docs/plan.md`), en el repositorio aparte `pointOfSales-web`. En este repositorio solo se hacen los cambios del backend que el frontend necesite. No implementar módulos fuera del MVP sin que se pida.
+- Alcance actual: **MVP del frontend** (ver "MVP del frontend (Angular)" en `docs/plan.md`), en el repositorio aparte `pointOfSales-frontend`. En este repositorio solo se hacen los cambios del backend que el frontend necesite. No implementar módulos fuera del MVP sin que se pida.
 - Seguir el orden de trabajo del MVP y verificar contra sus criterios de aceptación.
 - Cambios pequeños y enfocados; un commit por paso lógico, con mensaje en inglés en modo imperativo (`Add product search by barcode`).
 - Si una decisión no está en el plan o lo contradice, preguntar antes de implementarla y, una vez decidida, actualizar `docs/plan.md`.
@@ -116,4 +116,6 @@ Reglas para la segunda etapa:
 - `vagrant up`: crea la máquina virtual y levanta central y tiendas.
 - `docker compose up -d`: levanta los contenedores (dentro de la VM).
 - `./mvnw verify` (Git Bash) o `mvnw.cmd verify` (PowerShell): compila y ejecuta todas las pruebas.
-- Swagger: central `http://localhost:8080/swagger-ui.html`, tienda 1 `:8081`, tienda 2 `:8082`.
+- La VM usa tres IPs privadas, una por nodo (no `localhost`): central `192.168.56.10`, tienda 1 `192.168.56.11`, tienda 2 `192.168.56.12`.
+- Swagger: central `http://192.168.56.10:8080/swagger-ui.html`, tienda 1 `http://192.168.56.11:8080/swagger-ui.html`, tienda 2 `http://192.168.56.12:8080/swagger-ui.html`.
+- Webs: central `http://192.168.56.10`, tienda 1 `http://192.168.56.11`, tienda 2 `http://192.168.56.12`.
