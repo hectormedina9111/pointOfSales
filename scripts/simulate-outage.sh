@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Simula un corte de internet de una tienda: la desconecta de la red "wan",
-# por donde llega a la central, y la vuelve a conectar.
+# Simula un corte de internet de una tienda: la desconecta de la red "wan", por donde llega a la central,
+# y la vuelve a conectar. La tienda sigue en su propia red (<store>-lan), así que sigue funcionando con sus datos.
 # Uso: scripts/simulate-outage.sh <store1|store2> <down|up>
 set -euo pipefail
 
@@ -30,16 +30,36 @@ if [[ -z "$container" ]]; then
   exit 1
 fi
 
-network="$(docker network ls --filter name=_wan --format '{{.Name}}' | head -n 1)"
-if [[ -z "$network" ]]; then
-  echo "No se encontró la red wan. ¿Está levantado el entorno?" >&2
+if [[ "$(docker inspect --format '{{.State.Running}}' "$container")" != "true" ]]; then
+  echo "El contenedor ${store}-api no está en ejecución." >&2
   exit 1
 fi
 
+# Docker Compose pone a cada red el nombre del proyecto y el de la red del archivo ("wan"). Se filtra por esas
+# dos etiquetas para no tomar la red de otro proyecto que también tenga una red "wan".
+project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$container")"
+network="$(docker network ls --filter "label=com.docker.compose.project=${project}" \
+  --filter "label=com.docker.compose.network=wan" --format '{{.Name}}' | head -n 1)"
+if [[ -z "$network" ]]; then
+  echo "No se encontró la red wan del proyecto ${project}. ¿Está levantado el entorno?" >&2
+  exit 1
+fi
+
+# Contenedores conectados a la red, por id. Así el script no falla si la tienda ya estaba en el estado pedido.
+connected="$(docker network inspect --format '{{range $id, $c := .Containers}}{{$id}} {{end}}' "$network")"
+is_connected=false
+case " $connected " in
+  *" $container "*) is_connected=true ;;
+esac
+
 if [[ "$action" == "down" ]]; then
-  docker network disconnect "$network" "$container"
+  if [[ "$is_connected" == true ]]; then
+    docker network disconnect "$network" "$container"
+  fi
   echo "${store} desconectada de la central (corte de internet simulado)."
 else
-  docker network connect "$network" "$container"
+  if [[ "$is_connected" == false ]]; then
+    docker network connect "$network" "$container"
+  fi
   echo "${store} reconectada a la central."
 fi

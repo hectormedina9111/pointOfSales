@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.medinasystems.pos.shared.BusinessConflictException;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 import com.medinasystems.pos.sync.application.SyncProtocol.Change;
@@ -74,11 +75,20 @@ public class CentralSyncService {
         return new SnapshotPage(table.name(), rows, next, parents.size() == size);
     }
 
-    /** Entities changed after {@code sinceVersion}, each with its current state. */
+    /**
+     * Entities changed after {@code sinceVersion}, each with its current state.
+     *
+     * @throws BusinessConflictException SNAPSHOT_REQUIRED when the store is behind the purged part of the log, so
+     *                                   some changes it still needs no longer exist
+     */
     @Transactional(readOnly = true)
     public ChangesPage changes(long sinceVersion, int limit) {
         int size = pageSize(limit);
         long since = Math.max(0L, sinceVersion);
+        if (since < reader.purgedUpTo()) {
+            throw new BusinessConflictException("SNAPSHOT_REQUIRED",
+                    "The change log was purged after this version; load a new snapshot");
+        }
         List<ChangedEntity> changed = reader.changedEntities(since, size);
         List<Change> changes = new ArrayList<>(changed.size());
         for (ChangedEntity entity : changed) {

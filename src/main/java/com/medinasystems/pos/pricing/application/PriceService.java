@@ -3,6 +3,8 @@ package com.medinasystems.pos.pricing.application;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -12,6 +14,7 @@ import com.medinasystems.pos.catalog.ProductPricingCatalog;
 import com.medinasystems.pos.catalog.ProductPricingInfo;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchPricingInfo;
+import com.medinasystems.pos.organization.CountryDirectory;
 import com.medinasystems.pos.pricing.domain.PriceList;
 import com.medinasystems.pos.pricing.domain.PriceListItem;
 import com.medinasystems.pos.pricing.domain.PriceResolution;
@@ -35,15 +38,17 @@ public class PriceService {
     private final PriceListItemRepository items;
     private final ProductPricingCatalog products;
     private final BranchDirectory branches;
+    private final CountryDirectory countries;
     private final BranchAccess access;
     private final Clock clock;
 
     public PriceService(PriceListRepository lists, PriceListItemRepository items, ProductPricingCatalog products,
-                        BranchDirectory branches, BranchAccess access, Clock clock) {
+                        BranchDirectory branches, CountryDirectory countries, BranchAccess access, Clock clock) {
         this.lists = lists;
         this.items = items;
         this.products = products;
         this.branches = branches;
+        this.countries = countries;
         this.access = access;
         this.clock = clock;
     }
@@ -51,7 +56,7 @@ public class PriceService {
     /**
      * @param priceListId list to use; when null, the default list of {@code branchId} is used
      * @param branchId    branch of the sale; must be visible to the current user when given
-     * @param date        day the price applies to; today (UTC) when null
+     * @param date        day the price applies to; today in the time zone of the country when null
      */
     public ProductPriceView resolve(Long productId, Long priceListId, Long branchId, BigDecimal quantity,
                                     LocalDate date) {
@@ -74,13 +79,21 @@ public class PriceService {
             throw new BusinessRuleException("PRODUCT_INACTIVE", "The product is inactive");
         }
 
-        LocalDate day = date == null ? LocalDate.now(clock) : date;
+        LocalDate day = date == null ? LocalDate.now(clock.withZone(zoneOf(countryId))) : date;
         List<PriceListItem> candidates = list == null ? List.of()
                 : items.findAllByPriceListIdAndProductId(list.getId(), productId);
         PriceResolution price = PriceResolver.resolve(list, candidates, product.salePrice(), quantity, day);
         TaxBreakdown tax = TaxBreakdown.of(price.unitPrice(), product.taxRate());
         return new ProductPriceView(productId, price.priceListId(), price.source(), quantity, price.unitPrice(),
                 product.taxCode(), product.taxRate(), tax.taxableBase(), tax.taxAmount(), day);
+    }
+
+    /**
+     * The time zone of the country decides what "today" means for it: near midnight, Honduras (UTC-6) can
+     * already be on the next day in UTC. UTC is the fallback when the country is unknown.
+     */
+    private ZoneId zoneOf(long countryId) {
+        return countries.timeZoneOf(countryId).orElse(ZoneOffset.UTC);
     }
 
     /** A branch outside the user's branches is reported as not found, as the branch module does. */

@@ -1131,6 +1131,8 @@ Flyway los carga al crear la base, para que el sistema quede usable de inmediato
 - Un usuario administrador inicial. Su contraseña nunca va en el código ni en las migraciones: se toma de la variable de entorno POS_ADMIN_INITIAL_PASSWORD o, si no existe, se genera al instalar y se muestra una sola vez en el log de arranque. El sistema obliga a cambiarla en el primer ingreso. Solo en el entorno local, `.env.example` trae una contraseña de desarrollo (`Admin.Local.2026`) que Vagrant copia a `.env` si no existe; en producción nunca se usa ese archivo.
 - Los privilegios ENDPOINT se registran solos al arrancar, leyendo los controladores. Los MENU y ACTION del catálogo se cargan por migración y se asignan a ADMIN y MANAGER.
 
+**Desviación (paso 7):** el país Honduras, la empresa de ejemplo, las unidades y los impuestos no se cargan con Flyway, sino con dos `ApplicationRunner` que solo corren en la central (`OrganizationSeeder`, orden 10, y `CatalogSeeder`, orden 20). Motivo: una migración dejaría en la base de cada tienda filas con ids de la central antes de la réplica, y los rangos de ids de las tiendas deben empezar limpios. Cada fila se crea solo si falta, así que el arranque es seguro en cualquier momento. Detalle en "Decisiones de implementación: paso 7 (cierre)".
+
 ### Pruebas
 
 **Etapas (decisión del 24 de noviembre de 2026):** el proyecto se hace en dos etapas. En la primera solo se programa: no hay pruebas en el repositorio (las de los pasos 1 y 2 se retiraron) y el CI solo compila el proyecto. La segunda etapa, después de terminar todo el proyecto, agrega las pruebas descritas abajo para todos los módulos.
@@ -1201,6 +1203,33 @@ Con el perfil `dev`, la central siembra las dos tiendas registradas (nodo 1 y no
 - [ ] Cambiar el precio de un producto queda en `audit_log` de la central con valor anterior, nuevo, usuario y fecha.
 - [ ] Los ids de cada instalación están dentro de su rango (central, tienda 1, tienda 2).
 - [ ] Todas las pruebas pasan, incluida la de arquitectura (las pruebas completas se agregan en la segunda etapa).
+
+#### Estado de los criterios (cierre del MVP)
+
+Ningún criterio está marcado todavía: nada se ha probado en la máquina virtual ni con las pruebas automatizadas. Las columnas indican qué paso lo implementa y cómo comprobarlo a mano. Las pruebas automatizadas de estos criterios pertenecen a la **segunda etapa** del proyecto (ver "Pruebas").
+
+Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organización, 5 Catálogo, 6 Precios, 7 Tiendas, 8 Auditoría, 9 Errores. Central en `http://localhost:8080`, tiendas en `:8081` y `:8082`.
+
+| # | Criterio | Implementado en | Cómo verificarlo a mano | Estado |
+| --- | --- | --- | --- | --- |
+| 1 | `vagrant up` levanta central y tiendas con datos iniciales, sin pasos manuales | Paso 1 (Vagrantfile, `docker-compose.yml`); paso 7 (datos iniciales) | `vagrant up`; después `docker compose logs central-api \| grep "Initial data loaded"` debe mostrar la línea de país, empresa, unidades e impuestos | Pendiente de probar en la VM |
+| 2 | Swagger de la central (8080) y de cada tienda (8081, 8082) | Paso 1 | Abrir `/swagger-ui.html` en cada puerto y probar un `GET` | Pendiente de probar en la VM |
+| 3 | Las dos tiendas se activan solas, hacen la carga inicial y aparecen al día en el panel | Pasos 6A y 6B | Logs de `store1-api` y `store2-api`: "activated" y "Initial snapshot loaded". Carpeta 7: `GET /store-nodes` con `syncState` `ACTIVE` | Pendiente de probar en la VM |
+| 4 | Admin inicia sesión, cambia contraseña, crea un MANAGER, le quita un privilegio y el MANAGER recibe 403 | Paso 2 (login, privilegios) y paso 2B (usuarios y roles) | Carpetas 2 y 3. La colección crea un cajero, no un MANAGER: cambiar el rol a MANAGER a mano. Quitar un privilegio con `PUT /roles/{id}/privileges` y repetir la petición con el token del MANAGER | Pendiente de probar |
+| 5 | Usuario con acceso solo a la tienda 1 entra en la tienda 1 y es rechazado en la tienda 2 | Paso 6A (`StoreLoginPolicy`) y paso 3 (`user_branch`) | Requiere que cada tienda tenga su sucursal (`POST /store-nodes` con `branchId`). Las tiendas de desarrollo se crean **sin sucursal**, así que en el entorno local por defecto este criterio no se puede comprobar | No cumplido en el entorno local por defecto |
+| 6 | `/me/menus` devuelve solo los menús permitidos | Paso 2 | Carpeta 2, "Mis menús", con el admin y con un MANAGER sin menús: la lista debe cambiar | Pendiente de probar |
+| 7 | Árbol de categorías de tres niveles y rechazo de ciclos | Paso 4 | Carpeta 5 crea raíz y subcategoría; crear una tercera a mano bajo la subcategoría. Carpeta 9, "422 Ciclo de categorías" | Pendiente de probar (el nivel tres se hace a mano) |
+| 8 | Producto y servicio; búsqueda por nombre, SKU y código de barras en menos de 300 ms con 10 000 productos, en central y tiendas | Paso 4 | Carpeta 5 (búsquedas). **El tiempo de respuesta no está medido**: hace falta cargar 10 000 productos (no hay script de carga) | Parcial: funcionalidad sin medir el tiempo |
+| 9 | Se rechaza SKU repetido, servicio con seriales y producto con seriales y unidad con decimales | Paso 4 | Carpeta 9: "422 SKU repetido" y "422 Servicio con series". El caso de seriales con unidad decimal se prueba a mano con `allowsDecimals: true` y `tracksSerials: true` | Pendiente de probar (dos casos en la colección) |
+| 10 | Lista mayorista con escalas: precio correcto para 1, 12 y 100 unidades, y precio base fuera de vigencia | Paso 5 | Carpeta 6: "Precio con lista mayoreo" (cantidades 1, 12 y 100) y "Precio VIP fuera de vigencia" | Pendiente de probar |
+| 11 | Un producto de L 115.00 con ISV 15 % da base L 100.00 e impuesto L 15.00 | Paso 5 (`TaxBreakdown`) | Un producto con precio 115 y `ISV15`; `GET /products/{id}/price` debe devolver `taxableBase` 100.00 y `taxAmount` 15.00 | Pendiente de probar |
+| 12 | Un producto creado o modificado en la central aparece en ambas tiendas en menos de un minuto | Paso 6B (intervalo de 30 s y 15 s de arranque) | Carpeta 5 cambia el precio en la central; luego `GET /products/{id}/price` en `:8081` y `:8082` tras unos 60 s | Pendiente de probar |
+| 13 | Con la tienda 2 desconectada, el cambio llega a la tienda 1; la tienda 2 responde el precio anterior, el panel muestra cambios pendientes y al reconectarla se pone al día | Pasos 6B y 7 (script de corte) | `scripts/simulate-outage.sh store2 down`, cambiar el precio, comprobar las tres tiendas, `scripts/simulate-outage.sh store2 up`. Detalle en el README | Pendiente de probar |
+| 14 | Un cambio de 10 000 precios se aplica completo en cada tienda, nunca a medias | Paso 6B | **No cumplido por diseño actual:** la réplica aplica cada página de 500 cambios en su propia transacción. Una tienda puede mostrar precios nuevos y viejos mezclados mientras dura el ciclo. Pendiente de decidir (ver "Decisiones: paso 7") | No cumplido |
+| 15 | Una tienda rechaza con 403 cualquier intento de modificar el catálogo | Pasos 4 y 6A (`@CentralOnly`, `READ_ONLY_NODE`) | Con el token de la tienda, `POST /products` en `:8081` debe responder 403 con `code: READ_ONLY_NODE` | Pendiente de probar |
+| 16 | Cambiar el precio de un producto queda en `audit_log` de la central con valor anterior, nuevo, usuario y fecha | Paso 3 (`audit_log`), paso 4 (`PRICE_CHANGED`) | Carpeta 8: `GET /audit-log?entity=product&entityId=<id>` tras cambiar el precio | Pendiente de probar |
+| 17 | Los ids de cada instalación están dentro de su rango (central, tienda 1, tienda 2) | Paso 6A (`IdRangeSequenceAdjuster`, rangos por nodo) | Central: ids de 1 a 999 999 999. Tiendas: `store_identity` con su rango. Comprobar que las secuencias de la tienda arrancan en su rango. Las tiendas todavía no crean registros propios (eso llega con las ventas), así que no hay ids generados por la tienda que verificar | Parcial |
+| 18 | Todas las pruebas pasan, incluida la de arquitectura | Segunda etapa | `./mvnw verify`. En esta etapa no hay pruebas en el repositorio, solo compilación | Fuera de alcance de esta etapa |
 
 ### Orden de trabajo
 
@@ -1291,7 +1320,7 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
   - Una cantidad menor que la primera escala usa el precio base, aunque la lista exista.
   - `priceListId` se usa si se indica; si no, la lista por defecto de la sucursal. El país sale de la lista o, sin lista, de la sucursal. Sin ninguna de las dos responde `PRICE_CONTEXT_REQUIRED`.
   - Si se indica `branchId`, la sucursal debe estar entre las del usuario; si no, responde 404, igual que el módulo de organización.
-  - Sin `date`, se usa el día actual en UTC del reloj de la aplicación. Pendiente: en Honduras (UTC-6) cerca de la medianoche el día puede cambiar; conviene pasar la fecha desde la caja.
+  - Sin `date`, se usa el día actual en la zona horaria del país de la lista (o de la sucursal). Resuelto en el paso 7; ver allí.
   - `priority` se guarda, pero la resolución no lo usa todavía: la lista ya se elige de forma explícita (cliente o sucursal).
 - Las sucursales aceptan `defaultPriceListId` en `POST` y `PUT`. Un id que no existe provoca el error de clave foránea al guardar y se responde `PRICE_LIST_NOT_FOUND` (422). Pendiente: no se valida que la lista sea del mismo país que la sucursal, porque el plan no lo pide.
 - Los ítems se borran de verdad (`DELETE` responde 204), porque no son catálogo. La bitácora conserva el precio anterior en `PRICE_LIST_ITEM_DELETED`.
@@ -1448,11 +1477,11 @@ Alcance: la central registra los cambios de datos maestros, sirve la carga inici
 
 - La 6A corrió el registrador en la tienda, así que una tienda ya activada tiene privilegios y grants con ids locales. La carga inicial borra las tablas replicadas antes de cargar, y por eso esas filas desaparecen. No hay datos de usuario creados en la tienda que se pierdan, porque en esta etapa la tienda todavía no crea documentos.
 
-**Límites conocidos (no resueltos en 6B)**
+**Límites conocidos (6B; los dos primeros se atienden en el paso 7, ver allí)**
 
-- Orden de confirmación: un cambio con versión 5 puede confirmarse después de otro con versión 6. Si la tienda pide cambios después de la versión 6, no ve el 5. Lo cubriría una ventana de solape al pedir cambios (volver a pedir unas versiones antes); se deja para cuando la carga de la tienda sea crítica.
+- Orden de confirmación (resuelto en el paso 7): un cambio con versión 5 puede confirmarse después de otro con versión 6. Si la tienda pide cambios después de la versión 6, no ve el 5. Lo cubriría una ventana de solape al pedir cambios (volver a pedir unas versiones antes); se deja para cuando la carga de la tienda sea crítica.
 - Unicidad durante la aplicación: si en un lote se intercambian valores de una columna única (por ejemplo, el código de dos productos), la aplicación puede chocar con la unicidad aunque el resultado final sea válido. No pasa con los datos actuales.
-- Crecimiento del registro: `sync_change_log` crece sin límite. Se podará cuando todas las tiendas hayan pasado de una versión.
+- Crecimiento del registro (resuelto en el paso 7 con la purga diaria): `sync_change_log` solo borra filas que todas las tiendas activas ya descargaron y que tienen más de 30 días.
 - Sin compresión en el cliente: el cliente de la tienda no envía `Accept-Encoding` (`SimpleClientHttpRequestFactory` no lo agrega), así que el servidor responde sin gzip aunque `server.compression` esté activo. Se agregará cuando el volumen lo justifique.
 
 **Pendiente o no verificado**
@@ -1460,3 +1489,59 @@ Alcance: la central registra los cambios de datos maestros, sirve la carga inici
 - No se compiló: esta sesión no tiene Maven ni las dependencias. Solo se comprobó la sintaxis con `javac` (ningún error de sintaxis; los errores de símbolos son las dependencias de Spring que faltan).
 - No hay pruebas, como exige la primera etapa del proyecto.
 - Falta probar en la VM: el corte de la tienda 2, el cambio de precio y el regreso con `scripts/simulate-outage.sh`.
+
+### Decisiones de implementación: paso 7 (cierre)
+
+Alcance: datos iniciales, fecha de negocio, orden de confirmación y purga del registro de cambios, script de corte, documentación y estado de los criterios. Sin pruebas (primera etapa).
+
+**Datos iniciales (desviación del plan)**
+
+- Se cargan con Java, no con Flyway: `OrganizationSeeder` (orden 10) crea el país Honduras (HN, HNL, America/Tegucigalpa, RTN, HN_SAR) y la empresa "Empresa de ejemplo S. de R.L." (RTN `08019000000000`); `CatalogSeeder` (orden 20) crea las unidades UNIT, KG, LB y LT y los impuestos EXEMPT 0 %, ISV15 15 % e ISV18 18 %. Solo corren en el perfil `central`.
+- Motivo: una migración escribiría en la base de cada tienda filas con ids de la central antes de la réplica, y los rangos de ids de las tiendas deben empezar limpios.
+- Idempotentes: cada fila se crea solo si falta (país y empresa por ISO y por existencia de empresa; unidades y el par país-código de impuesto por código). Se crean con los servicios de cada módulo, así que se aplican sus reglas y su auditoría. El administrador inicial sigue en `AdminBootstrap` y los roles, privilegios y menús siguen en las migraciones V2 y V3, como dice el plan.
+- No se crean sucursales.
+- Los nombres de los datos (por ejemplo "Honduras", "Exento", "ISV 15 %") van en español: son datos de negocio, no código ni mensajes.
+- Un log por seeder con la forma `Initial data loaded: ...`. Ninguno registra secretos.
+- `CountryDirectory` gana `findIdByIsoCode(isoCode)` (para el id de Honduras) y `timeZoneOf(countryId)` (para la fecha de negocio).
+
+**Fecha de negocio**
+
+- Sin `date`, `GET /products/{id}/price` usa el día de hoy en la zona horaria del país de la lista (o, sin lista, de la sucursal). Honduras es UTC-6, así que cerca de medianoche el día UTC ya no coincide con el de la caja. Si el país no existe, se usa UTC.
+- La caja puede seguir enviando `date` explícito, que tiene prioridad.
+
+**Orden de confirmación del registro (`V10__sync_commit_order.sql`)**
+
+- Problema: la versión de `sync_change_log` se asigna al insertar, pero la transacción puede confirmarse después. Una versión 5 de una transacción lenta puede aparecer después de una versión 6 ya confirmada; si la tienda pidió cambios desde 6, la 5 se pierde.
+- Primera medida: cada fila guarda `tx_id xid8` (la transacción que la escribió) y las lecturas de la réplica solo usan filas con `tx_id < pg_snapshot_xmin(pg_current_snapshot())`, es decir, transacciones ya terminadas. La misma regla aplica a la versión de la carga inicial.
+- Esa medida no basta por sí sola: la transacción de la versión 5 puede seguir abierta mientras la de la versión 6 (con un xid menor) ya confirmó y pasa el filtro. Por eso se agrega una segunda medida: el trigger toma un candado de transacción (`pg_advisory_xact_lock(4242001)`) antes de registrar el cambio. Así los cambios de datos maestros se registran de uno en uno, y las versiones se confirman en el mismo orden en que se asignan.
+- Costo: dos transacciones que escriben datos maestros en orden cruzado pueden interbloquearse; PostgreSQL aborta una y el usuario la repite. Con el volumen de datos maestros del MVP es aceptable. **Decisión tomada en el cierre; pendiente de confirmar con el responsable porque cambia el diseño de sincronización.**
+- Las tiendas no toman el candado (los triggers salen antes).
+
+**Purga del registro**
+
+- `SyncLogPurger` corre cada día a las 03:00 (`pos.sync.purge-cron`, variable `POS_SYNC_PURGE_CRON`). Solo en la central; `CentralSchedulingConfig` activa `@EnableScheduling` en ese perfil.
+- Borra las filas con `version <=` el mínimo de `last_download_version` de las tiendas activas (activadas y no revocadas; un valor `NULL` cuenta como 0, así que no borra nada) **y** con `changed_at` de hace más de 30 días. Sin tiendas activas no borra nada. Registra el número de filas borradas.
+- Guarda la versión máxima borrada en `sync_purge_state` (una sola fila, `purged_up_to`).
+- Una tienda que pide cambios con `sinceVersion < purged_up_to` recibe `409 SNAPSHOT_REQUIRED` (código de negocio, `BusinessConflictException`). La tienda borra `snapshot_completed_at` y en el siguiente ciclo carga la copia completa.
+- **Consecuencia importante:** como el mínimo incluye a toda tienda activa, una tienda activa desconectada durante semanas bloquea la purga desde su última versión. Al volver, sincroniza solo con cambios, sin copia completa. El crecimiento del registro mientras una tienda está apagada es el precio de esa regla. El `409` queda como red de seguridad; en operación normal no debería aparecer.
+- Si el plan se quisiera "copia completa a toda tienda que vuelva después de la ventana", habría que purgar sin mirar a las tiendas activas, y eso rompe la garantía de que ninguna tienda pierda cambios. Se dejó la regla más segura.
+
+**Script de corte (`scripts/simulate-outage.sh`) y reinicio (`scripts/reset.sh`)**
+
+- La red `wan` se busca por las etiquetas de Compose (`com.docker.compose.project` y `com.docker.compose.network=wan`), no por el nombre: el filtro `_wan` anterior podía tomar la red de otro proyecto.
+- El script comprueba que el contenedor esté en ejecución y que no esté ya en el estado pedido; repetir `down` o `up` no falla.
+- `reset.sh` construye la imagen antes de levantar los contenedores (las tres APIs usan `medinasystems/pos:dev`, que solo construye `central-api`) y elimina contenedores huérfanos.
+
+**Documentación**
+
+- La colección Hoppscotch tiene 90 peticiones en 9 carpetas numeradas del 1 al 9. Se agregó "Precio de hoy (sin fecha)" en la carpeta 6, que no envía `date` y comprueba la fecha de negocio.
+- El README se reordenó con una guía de inicio a fin; las referencias de la API quedaron debajo.
+- El estado de los criterios está en la sub-sección "Estado de los criterios (cierre del MVP)", dentro de "Criterios de aceptación". Ninguna casilla se marca: nada se ha probado todavía.
+
+**No cumplido o no verificado (pendiente)**
+
+- **Criterio 10 (cambio de 10 000 precios aplicado completo):** no se cumple. Cada página de 500 cambios se aplica en su propia transacción, así que una tienda puede mostrar precios mezclados entre dos ciclos. Para cumplirlo habría que aplicar un lote completo en una sola transacción o publicar la versión solo cuando el lote entero esté listo. Es un cambio de diseño de la réplica; no se hizo en el cierre.
+- **Criterio 5 en local:** las tiendas de desarrollo se crean sin sucursal, así que el filtro de acceso por sucursal no se ve con la configuración por defecto. Hay que registrar las tiendas con `branchId`.
+- **Criterio 8 (tiempo de búsqueda):** no medido; no hay script de carga de 10 000 productos.
+- **Pruebas:** no hay pruebas en el repositorio (primera etapa). `./mvnw verify` solo compila. La comprobación de este paso fue solo sintáctica (`javac` sin dependencias, sin errores de sintaxis).
+- **Máquina virtual:** `vagrant up`, el script de corte y el reinicio no se han ejecutado en esta sesión.

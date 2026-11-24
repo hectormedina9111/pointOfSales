@@ -30,15 +30,32 @@ public class SyncDataReader {
     public record IdRow(long id, String rowJson) {
     }
 
+    /**
+     * Only rows whose transaction has finished. The snapshot's xmin is the oldest transaction still running, so
+     * every transaction below it has committed or rolled back. Together with the commit lock in V10, a row
+     * is never passed by the cursor while an older version is still being written.
+     */
+    private static final String FINISHED_ROWS = "tx_id < pg_snapshot_xmin(pg_current_snapshot())";
+
     private final JdbcTemplate jdbc;
 
     public SyncDataReader(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    /** Highest version in the change log, or 0 when it is empty. */
+    /**
+     * Highest version whose transaction has finished, or 0 when there is none. Rows of transactions still open are
+     * left out: a lower version may still be committed later, so they must not move the cursor.
+     */
     public long latestVersion() {
-        Long version = jdbc.queryForObject("SELECT COALESCE(MAX(version), 0) FROM sync_change_log", Long.class);
+        Long version = jdbc.queryForObject("SELECT COALESCE(MAX(version), 0) FROM sync_change_log"
+                + " WHERE " + FINISHED_ROWS, Long.class);
+        return version == null ? 0L : version;
+    }
+
+    /** Versions up to this one were purged from the change log (see SyncLogPurger); 0 when nothing was purged. */
+    public long purgedUpTo() {
+        Long version = jdbc.queryForObject("SELECT purged_up_to FROM sync_purge_state WHERE id = 1", Long.class);
         return version == null ? 0L : version;
     }
 
@@ -73,7 +90,8 @@ public class SyncDataReader {
         return jdbc.query("""
                 SELECT entity, entity_id, MAX(version) AS v, (array_agg(operation ORDER BY version DESC))[1] AS op
                 FROM sync_change_log
-                WHERE version > ?
+                WHERE version > ? AND """ + FINISHED_ROWS + """
+
                 GROUP BY entity, entity_id
                 ORDER BY v
                 LIMIT ?

@@ -3,12 +3,15 @@ package com.medinasystems.pos.sync.infrastructure;
 import java.time.Duration;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.medinasystems.pos.shared.NodeProperties;
+import com.medinasystems.pos.sync.application.SnapshotRequiredException;
 import com.medinasystems.pos.sync.application.SyncProtocol.AckRequest;
 import com.medinasystems.pos.sync.application.SyncProtocol.ChangesPage;
 import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatRequest;
@@ -57,12 +60,22 @@ public class CentralSyncClient {
                 .body(SnapshotPage.class);
     }
 
+    /**
+     * @throws SnapshotRequiredException when the central node answers 409: the store must load a new snapshot
+     */
     public ChangesPage changes(String token, long sinceVersion, int limit) {
-        return restClient.get()
-                .uri("/api/v1/sync/changes?sinceVersion={since}&limit={limit}", sinceVersion, limit)
-                .header(TOKEN_HEADER, token)
-                .retrieve()
-                .body(ChangesPage.class);
+        try {
+            return restClient.get()
+                    .uri("/api/v1/sync/changes?sinceVersion={since}&limit={limit}", sinceVersion, limit)
+                    .header(TOKEN_HEADER, token)
+                    .retrieve()
+                    .body(ChangesPage.class);
+        } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
+                throw new SnapshotRequiredException();
+            }
+            throw ex;
+        }
     }
 
     public void ack(String token, long version) {

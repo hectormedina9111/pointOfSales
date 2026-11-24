@@ -4,7 +4,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 | Archivo | Qué es |
 |---|---|
-| `pos-api.hoppscotch.json` | Colección "POS API" con 89 peticiones en 9 carpetas. |
+| `pos-api.hoppscotch.json` | Colección "POS API" con 90 peticiones en 9 carpetas. |
 | `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://localhost:8080`. |
 | `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://localhost:8081`. |
 

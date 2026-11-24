@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
+import com.medinasystems.pos.shared.BusinessConflictException;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ReadOnlyNodeException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
@@ -58,6 +59,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 LocaleContextHolder.getLocale());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatusCode.valueOf(422), detail);
         problem.setTitle(messages.getMessage("title.BUSINESS_RULE_VIOLATED", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", ex.getCode());
+        return problem;
+    }
+
+    @ExceptionHandler(BusinessConflictException.class)
+    public ProblemDetail handleBusinessConflict(BusinessConflictException ex) {
+        String detail = messages.getMessage("error." + ex.getCode(), null, ex.getMessage(),
+                LocaleContextHolder.getLocale());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
+        problem.setTitle(messages.getMessage("title.BUSINESS_CONFLICT", null, LocaleContextHolder.getLocale()));
         problem.setProperty("code", ex.getCode());
         return problem;
     }
