@@ -167,6 +167,8 @@ Cada tienda tiene su propio servidor y se activa ante la central una sola vez. L
 3. En el servidor de la tienda, configura el perfil `store`, la base de datos y `POS_NODE_NUMBER` (el número que asignó la central; si no coincide, la tienda no guarda su identidad), `POS_CENTRAL_URL` y `POS_ACTIVATION_CODE`.
 4. Arranca la tienda. Si la central no responde, reintenta cada 10 segundos durante unos 5 minutos. Si el código venció o fue rechazado, el log lo indica y hay que generar otro.
 
+**Asignar o cambiar la sucursal de una tienda.** Desde la central, con `PUT /api/v1/store-nodes/{id}/branch` y el cuerpo `{"branchId": <id de la sucursal>}`. Para quitarla, envía `{"branchId": null}`. La tienda recibe el cambio en su siguiente latido, en unos 30 segundos. A partir de ese momento, la tienda atiende a los usuarios de esa sucursal. Una sucursal pertenece a una sola tienda, y una tienda revocada no se reasigna. Las tiendas de desarrollo se registran solas antes de que exista ninguna sucursal, por eso necesitan esta asignación.
+
 **Revocar una tienda.** `POST /api/v1/store-nodes/{id}/revoke` deja de aceptar su token de inmediato y libera su sucursal. Una tienda revocada no vuelve a activarse.
 
 **Token de la tienda.** Las llamadas de la tienda a la central llevan la cabecera `X-Store-Token`. La central guarda solo su SHA-256; la tienda lo guarda en claro en `store_identity`, en su propia base de datos.

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import com.medinasystems.pos.sync.application.SyncProtocol.ChangesPage;
 import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatRequest;
+import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatResponse;
 import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotPage;
 import com.medinasystems.pos.sync.domain.StoreIdentity;
 import com.medinasystems.pos.sync.domain.SyncTable;
@@ -102,7 +103,11 @@ public class StoreReplicator {
     }
 
     private void heartbeat(String token) {
-        client.heartbeat(token, new HeartbeatRequest(appliedVersion(), appVersion(), 0, null));
+        HeartbeatResponse response = client.heartbeat(token,
+                new HeartbeatRequest(appliedVersion(), appVersion(), 0, null));
+        if (state.updateBranch(response.branchId())) {
+            log.info("Store branch changed to {}", response.branchId());
+        }
     }
 
     private void pullChanges(String token) {

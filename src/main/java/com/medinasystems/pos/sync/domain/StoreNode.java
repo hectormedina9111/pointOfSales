@@ -155,6 +155,20 @@ public class StoreNode extends AuditableEntity {
         this.status = StoreNodeStatus.DISABLED;
     }
 
+    /**
+     * Sets the branch this store serves, or clears it when {@code branchId} is null. The caller checks that the
+     * branch exists and belongs to no other store.
+     *
+     * @throws BusinessRuleException STORE_REVOKED when the store was revoked: a revoked store has no branch
+     */
+    public void assignBranch(Long branchId) {
+        if (isRevoked()) {
+            throw new BusinessRuleException("STORE_REVOKED",
+                    "The store was revoked and cannot be changed or activated again");
+        }
+        this.branchId = branchId;
+    }
+
     /** True when a request carrying this store's token may be accepted. */
     public boolean canAuthenticate() {
         return status == StoreNodeStatus.ACTIVE && credentialHash != null && !isRevoked();

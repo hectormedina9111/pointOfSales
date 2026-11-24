@@ -30,6 +30,13 @@ public class StoreSyncState {
         identities.findFirstByOrderByIdAsc().ifPresent(StoreIdentity::requireSnapshot);
     }
 
+    /** Applies the branch the central node reports. Returns true when the local branch changed. */
+    public boolean updateBranch(Long branchId) {
+        return identities.findFirstByOrderByIdAsc()
+                .map(identity -> identity.updateBranch(branchId))
+                .orElse(false);
+    }
+
     public void recordSuccess(Instant now) {
         identities.findFirstByOrderByIdAsc().ifPresent(identity -> identity.recordSyncSuccess(now));
     }

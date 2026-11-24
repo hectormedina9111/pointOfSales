@@ -1451,6 +1451,7 @@ Alcance: registro de tiendas en la central, activación, credenciales de la tien
 - `BranchDirectory.exists(branchId)` en la API pública de organización, para validar la sucursal al registrar una tienda (`BRANCH_NOT_FOUND`, 422).
 - Respuestas JSON comprimidas con gzip desde 2 KB (`server.compression`), para la sincronización futura.
 - Sin cambios en `sync_change_log`: las tiendas no son datos maestros, así que su alta no se replica todavía.
+- La sucursal de una tienda se asigna o cambia desde la central (`PUT /store-nodes/{id}/branch`); la tienda la recibe en el siguiente latido. Una sucursal pertenece a una sola tienda y una tienda revocada no se reasigna. Necesario porque las tiendas de desarrollo se registran solas antes de que exista ninguna sucursal.
 
 **Pendiente o no verificado**
 

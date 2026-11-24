@@ -1859,6 +1859,25 @@
         },
         {
           "v": "4",
+          "name": "Asignar sucursal a la tienda",
+          "method": "PUT",
+          "endpoint": "<<baseUrl>>/api/v1/store-nodes/<<storeNodeId>>/branch",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"branchId\": \"<<branchId>>\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
           "name": "Estado de sincronización (tienda)",
           "method": "GET",
           "endpoint": "<<storeUrl>>/api/v1/sync/status",
