@@ -16,7 +16,7 @@ En Windows:
 
 ## Pruebas
 
-El proyecto se hace en dos etapas: primero se programa todo y después se escriben las pruebas completas. Por ahora solo existen las pruebas de los pasos 1 y 2 y la de arquitectura.
+El proyecto se hace en dos etapas: primero se programa todo y después se escriben las pruebas completas. Por ahora no hay pruebas: `./mvnw verify` solo compila.
 
 Desde Git Bash:
 

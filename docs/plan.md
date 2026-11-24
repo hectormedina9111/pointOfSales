@@ -1133,7 +1133,7 @@ Flyway los carga al crear la base, para que el sistema quede usable de inmediato
 
 ### Pruebas
 
-**Etapas (decisión del 24 de noviembre de 2026):** el proyecto se hace en dos etapas. En la primera solo se programa: no se escriben pruebas nuevas. Las pruebas ya escritas en los pasos 1 y 2 se conservan, y el CI sigue compilando y ejecutándolas junto con la prueba de arquitectura de Spring Modulith, para detectar errores de compilación y de diseño. La segunda etapa, después de terminar todo el proyecto, agrega las pruebas descritas abajo para todos los módulos.
+**Etapas (decisión del 24 de noviembre de 2026):** el proyecto se hace en dos etapas. En la primera solo se programa: no hay pruebas en el repositorio (las de los pasos 1 y 2 se retiraron) y el CI solo compila el proyecto. La segunda etapa, después de terminar todo el proyecto, agrega las pruebas descritas abajo para todos los módulos.
 
 
 - **Dominio:** pruebas unitarias de cada regla anterior, en especial la resolución de precio y el cálculo de la base gravable.
