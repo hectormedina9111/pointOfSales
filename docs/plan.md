@@ -1128,7 +1128,7 @@ Flyway los carga al crear la base, para que el sistema quede usable de inmediato
 - Impuestos de Honduras: EXEMPT (0 %), ISV15 (15 %) e ISV18 (18 %).
 - Unidades de medida: UNIT, KG, LB y LT.
 - Roles ADMIN, MANAGER, CASHIER y WAREHOUSE\_CLERK.
-- Un usuario administrador inicial. Su contraseña nunca va en el código ni en las migraciones: se toma de la variable de entorno POS_ADMIN_INITIAL_PASSWORD o, si no existe, se genera al instalar y se muestra una sola vez en el log de arranque. El sistema obliga a cambiarla en el primer ingreso.
+- Un usuario administrador inicial. Su contraseña nunca va en el código ni en las migraciones: se toma de la variable de entorno POS_ADMIN_INITIAL_PASSWORD o, si no existe, se genera al instalar y se muestra una sola vez en el log de arranque. El sistema obliga a cambiarla en el primer ingreso. Solo en el entorno local, `.env.example` trae una contraseña de desarrollo (`Admin.Local.2026`) que Vagrant copia a `.env` si no existe; en producción nunca se usa ese archivo.
 - Los privilegios ENDPOINT se registran solos al arrancar, leyendo los controladores. Los MENU y ACTION del catálogo se cargan por migración y se asignan a ADMIN y MANAGER.
 
 ### Pruebas
