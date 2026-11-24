@@ -17,6 +17,9 @@ spring:
           time_zone: UTC
   flyway:
     locations: classpath:db/migration
+  web:
+    # Idioma por defecto cuando la petición no trae Accept-Language.
+    locale: es
   mvc:
     problemdetails:
       enabled: true

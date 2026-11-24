@@ -78,6 +78,15 @@ Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la 
 - En una tienda, los endpoints de escritura de datos maestros (países, empresa, sucursales, usuarios, roles y privilegios) responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
 - Cada alta y cambio de datos maestros queda en la bitácora `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas en ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`), ordenada por fecha descendente. Requiere el privilegio ENDPOINT correspondiente.
 
+## Catálogo
+
+- Las categorías (árbol, `GET/POST/PUT/DELETE /api/v1/categories`, filtros `parentId` y `active`), las unidades de medida (`/api/v1/units-of-measure`), los impuestos por país (`/api/v1/taxes?countryId=`) y los productos (`/api/v1/products`) se mantienen en la central. El catálogo es global: no se filtra por sucursal.
+- Búsqueda de productos: `GET /api/v1/products?q=&categoryId=&type=&active=`. `q` busca parte del nombre sin distinguir mayúsculas, o el SKU o código de barras exacto. También `GET /api/v1/products/{id}`, `/products/barcode/{code}` y `/products/sku/{sku}`.
+- `DELETE` en categorías y productos los desactiva; no los borra. Una categoría no se desactiva si tiene subcategorías o productos activos, y un impuesto en uso no se desactiva.
+- El impuesto de un producto para otro país se mantiene con `GET/PUT /api/v1/products/{id}/taxes` (`[{"countryId": 2, "taxId": 5}]`). `PUT` reemplaza la lista completa.
+- Los precios incluyen ISV. Cambiar el precio o el costo de un producto deja un evento `PRICE_CHANGED` en la bitácora, además del cambio normal.
+- Un servicio (`productType: SERVICE`) nunca controla inventario ni seriales. Los seriales exigen inventario y una unidad sin decimales.
+
 ## Simular un corte de internet
 
 Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):

@@ -6,7 +6,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 
 - **Todo el código va en inglés:** paquetes, clases, métodos, variables, tablas, columnas, rutas de la API, campos JSON, valores de enumeración, nombres de pruebas, mensajes de log y mensajes de commit.
 - **Solo la documentación va en español:** `docs/`, README y comentarios de documentación dirigidos a personas del equipo.
-- Los textos que ve el usuario final van en archivos de traducción (`messages_es.properties`), nunca escritos en el código.
+- Los textos que ve el usuario final (mensajes de error incluidos) van en archivos de traducción, nunca escritos en el código, **en inglés y en español**: `messages.properties` (inglés) y `messages_es.properties` (español). El idioma se elige con el encabezado `Accept-Language`; si no viene, se usa español.
 
 ## Stack (no cambiar sin acordarlo)
 
