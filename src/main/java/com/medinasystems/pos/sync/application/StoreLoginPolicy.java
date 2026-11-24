@@ -13,8 +13,8 @@ import com.medinasystems.pos.sync.domain.StoreIdentity;
 import com.medinasystems.pos.sync.infrastructure.StoreIdentityRepository;
 
 /**
- * Store side: a user may sign in only if this store has no branch of its own, or the user can see that branch.
- * Replaces the permissive default policy of the security module.
+ * Store side: a user may sign in only if this store has no branch of its own, or the user has that branch
+ * in user_branch. Replaces the permissive default policy of the security module.
  */
 @Component
 @Profile("store")

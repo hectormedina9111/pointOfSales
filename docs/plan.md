@@ -958,7 +958,7 @@ Todas las rutas cuelgan de `/api/v1`, usan JSON y devuelven errores en formato R
 | GET / POST | /receivables?customerId=&status=, /receivable-payments | Cuentas por cobrar y registro de abonos | CASHIER+ |
 | POST / GET | /sync/activate, /sync/snapshot, /sync/changes?sinceVersion=&limit=, /sync/ack, /sync/upload, /sync/heartbeat, /sync/reconciliation | Solo entre servidores: activar la tienda, carga inicial, bajar cambios y confirmar la versión aplicada, subir documentos, latido y cuadre diario. Además, el WebSocket /sync/notifications avisa de cambios nuevos | Servidor de tienda registrado (credencial propia) |
 
-La última columna es orientativa: el acceso real lo decide la tabla `role\_privilege`, no un rol fijo en el código. "CASHIER+" significa cajero o cualquier rol superior. Los cuerpos JSON usan `camelCase` en inglés (por ejemplo `externalCode`, `firstName`). Además del rol, cada consulta se filtra por las sucursales asignadas al usuario. Esto es obligatorio con ids incrementales: como son predecibles (`/sales/1041`, `/sales/1042`), la API debe verificar en cada petición que el registro pertenece a una sucursal del usuario.
+La última columna es orientativa: el acceso real lo decide la tabla `role\_privilege`, no un rol fijo en el código. "CASHIER+" significa cajero o cualquier rol superior. Los cuerpos JSON usan `camelCase` en inglés (por ejemplo `externalCode`, `firstName`). Además del rol, cada consulta se filtra por nodo: la central ve todas las sucursales y cada tienda solo la sucursal que le asignó la central (`store_identity.branch_id`). Esto es obligatorio con ids incrementales: como son predecibles (`/sales/1041`, `/sales/1042`), la API debe verificar en cada petición que el registro pertenece a una sucursal visible desde el nodo.
 
 ## Plan de fases
 
@@ -1327,8 +1327,8 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - `country` lleva también `name` y `tax_id_label`, tal como indica la tabla de este documento.
 - `branch.default_price_list_id` no tiene clave foránea hasta el paso 5, cuando existe `price_list`.
 - Códigos de error nuevos: `COUNTRY_INACTIVE`, `COUNTRY_NOT_FOUND`, `DUPLICATE_ISO_CODE`, `DUPLICATE_TAX_ID`, `DUPLICATE_BRANCH_CODE`, `COMPANY_NOT_CONFIGURED`, `BRANCH_NOT_FOUND` (422), y `READ_ONLY_NODE` (403 en la tienda).
-- Una sucursal que el usuario no ve responde 404 en lugar de 403, para no revelar que existe.
-- Crear una sucursal no da acceso a nadie, ni siquiera a quien la crea. Cada usuario entra solo a las sucursales (tiendas) que el administrador le asigna en `user_branch` con `PUT /users/{id}/branches`.
+- Una sucursal que este nodo no ve responde 404 en lugar de 403, para no revelar que existe. La central ve todas; cada tienda solo la suya.
+- Crear una sucursal no da acceso a nadie, ni siquiera a quien la crea. Cada usuario entra solo a las tiendas que el administrador le asigna en `user_branch` con `PUT /users/{id}/branches`.
 - Los eventos de auditoría de cambios guardan solo los campos que cambiaron; las altas no tienen valores anteriores.
 
 ### Decisiones de implementación: paso 4 (catálogo)
@@ -1458,6 +1458,7 @@ Alcance: registro de tiendas en la central, activación, credenciales de la tien
 - No se compiló ni se ejecutó: el entorno de esta sesión no tiene Maven ni las dependencias. Solo se comprobó la sintaxis con `javac`.
 - No hay pruebas, como exige la primera etapa del proyecto.
 - Falta la réplica de datos maestros (`sync_change_log`, descarga inicial), el latido (que asignará `OUT_OF_SYNC`) y la subida de documentos.
+- Decisión del 24 de noviembre de 2026: la visibilidad de sucursales depende del nodo, no del usuario. La central ve todas; cada tienda solo la suya. `user_branch` solo controla en qué tienda puede entrar cada usuario.
 
 ### Decisiones de implementación: paso 6B (réplica)
 

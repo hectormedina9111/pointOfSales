@@ -22,7 +22,7 @@ import com.medinasystems.pos.pricing.domain.PriceResolver;
 import com.medinasystems.pos.pricing.domain.TaxBreakdown;
 import com.medinasystems.pos.pricing.infrastructure.PriceListItemRepository;
 import com.medinasystems.pos.pricing.infrastructure.PriceListRepository;
-import com.medinasystems.pos.security.BranchAccess;
+import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
@@ -39,23 +39,23 @@ public class PriceService {
     private final ProductPricingCatalog products;
     private final BranchDirectory branches;
     private final CountryDirectory countries;
-    private final BranchAccess access;
+    private final BranchScope scope;
     private final Clock clock;
 
     public PriceService(PriceListRepository lists, PriceListItemRepository items, ProductPricingCatalog products,
-                        BranchDirectory branches, CountryDirectory countries, BranchAccess access, Clock clock) {
+                        BranchDirectory branches, CountryDirectory countries, BranchScope scope, Clock clock) {
         this.lists = lists;
         this.items = items;
         this.products = products;
         this.branches = branches;
         this.countries = countries;
-        this.access = access;
+        this.scope = scope;
         this.clock = clock;
     }
 
     /**
      * @param priceListId list to use; when null, the default list of {@code branchId} is used
-     * @param branchId    branch of the sale; must be visible to the current user when given
+     * @param branchId    branch of the sale; must be visible on this node when given
      * @param date        day the price applies to; today in the time zone of the country when null
      */
     public ProductPriceView resolve(Long productId, Long priceListId, Long branchId, BigDecimal quantity,
@@ -96,9 +96,9 @@ public class PriceService {
         return countries.timeZoneOf(countryId).orElse(ZoneOffset.UTC);
     }
 
-    /** A branch outside the user's branches is reported as not found, as the branch module does. */
+    /** A branch this node cannot see is reported as not found, as the branch module does. */
     private BranchPricingInfo findVisibleBranch(long branchId) {
-        if (!access.branchIdsOf(access.currentUserId()).contains(branchId)) {
+        if (!scope.canSee(branchId)) {
             throw new ResourceNotFoundException("branch", branchId);
         }
         return branches.find(branchId).orElseThrow(() -> new ResourceNotFoundException("branch", branchId));

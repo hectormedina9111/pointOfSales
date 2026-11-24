@@ -58,7 +58,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - JSON en `camelCase`. Errores en formato RFC 9457 (`application/problem+json`).
 - Listados paginados con `page`, `size`, `sort`.
 - Cada endpoint queda protegido por un privilegio ENDPOINT (tabla `privilege`), registrado automáticamente al arrancar. No usar roles fijos en el código (`hasRole('ADMIN')`).
-- Además del privilegio, toda consulta se filtra por las sucursales del usuario (`user_branch`): los ids son predecibles.
+- Además del privilegio, las consultas se filtran por nodo: la central ve todas las sucursales y cada tienda solo la sucursal que le asignó la central (`store_identity.branch_id`). La tabla `user_branch` solo decide en qué tienda puede iniciar sesión cada usuario.
 - DELETE sobre catálogos desactiva, no borra.
 
 ## Seguridad
