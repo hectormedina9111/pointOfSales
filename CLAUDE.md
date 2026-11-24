@@ -70,10 +70,14 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 
 ## Pruebas
 
+- **Dos etapas:** primero solo se programa todo el proyecto, **sin escribir pruebas nuevas**. Las pruebas se escriben en una segunda etapa, al terminar el proyecto, siguiendo las reglas de esta sección. Mientras tanto, el CI sigue compilando y ejecutando las pruebas existentes y la de arquitectura, que deben pasar.
+
+Reglas para la segunda etapa:
+
 - Toda regla de negocio tiene prueba unitaria; los endpoints tienen pruebas de integración con Testcontainers.
 - Cada endpoint se prueba con un usuario que tiene el privilegio y con uno que no.
 - Cobertura mínima del 80 % en paquetes `domain`.
-- Antes de dar una tarea por terminada: `./mvnw verify` debe pasar completo.
+- Antes de dar una tarea por terminada: `./mvnw verify` debe pasar completo (en la primera etapa, con las pruebas existentes).
 
 ## Forma de trabajo
 

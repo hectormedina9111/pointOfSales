@@ -16,6 +16,8 @@ En Windows:
 
 ## Pruebas
 
+El proyecto se hace en dos etapas: primero se programa todo y después se escriben las pruebas completas. Por ahora solo existen las pruebas de los pasos 1 y 2 y la de arquitectura.
+
 Desde Git Bash:
 
 ```bash
