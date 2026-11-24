@@ -9,4 +9,14 @@ import com.medinasystems.pos.security.domain.AppUser;
 public interface AppUserRepository extends JpaRepository<AppUser, Long> {
 
     Optional<AppUser> findByUsername(String username);
+
+    boolean existsByUsername(String username);
+
+    boolean existsByEmail(String email);
+
+    boolean existsByEmailAndIdNot(String email, Long id);
+
+    boolean existsByExternalCode(String externalCode);
+
+    boolean existsByExternalCodeAndIdNot(String externalCode, Long id);
 }

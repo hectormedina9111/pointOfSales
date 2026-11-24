@@ -33,6 +33,12 @@ public class AppUser extends AuditableEntity {
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
+    @Column(length = 150, unique = true)
+    private String email;
+
+    @Column(name = "external_code", length = 50, unique = true)
+    private String externalCode;
+
     @Column(name = "failed_attempts", nullable = false)
     private short failedAttempts;
 
@@ -92,6 +98,24 @@ public class AppUser extends AuditableEntity {
         this.mustChangePassword = false;
     }
 
+    /** An administrator sets a temporary password: the user must change it at the next sign-in. */
+    public void resetPassword(String newPasswordHash) {
+        this.passwordHash = newPasswordHash;
+        this.mustChangePassword = true;
+        this.failedAttempts = 0;
+        this.lockedUntil = null;
+    }
+
+    /** Replaces the editable profile data and the roles. The username never changes. */
+    public void update(String fullName, String email, String externalCode, boolean active, Set<Role> newRoles) {
+        this.fullName = fullName;
+        this.email = email;
+        this.externalCode = externalCode;
+        this.active = active;
+        roles.clear();
+        roles.addAll(newRoles);
+    }
+
     public void addRole(Role role) {
         roles.add(role);
     }
@@ -106,6 +130,14 @@ public class AppUser extends AuditableEntity {
 
     public String getFullName() {
         return fullName;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public String getExternalCode() {
+        return externalCode;
     }
 
     public boolean isMustChangePassword() {

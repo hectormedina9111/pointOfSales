@@ -61,6 +61,14 @@ Para borrar todos los datos y empezar de cero: `scripts/reset.sh` (dentro de la 
 - Con `mustChangePassword` en `true`, el resto de endpoints responde 403 hasta que el usuario cambie su contraseña con `POST /api/v1/me/password` (`{"currentPassword": "...", "newPassword": "..."}`, mínimo 10 caracteres).
 - `POS_JWT_SECRET` firma los tokens y debe tener al menos 32 caracteres. Los valores de `.env.example` son solo para desarrollo.
 
+## Privilegios
+
+- Cada endpoint de `/api/v1` tiene un privilegio ENDPOINT (tabla `privilege`). Al arrancar, la aplicación lee los controladores, crea los privilegios que falten y se los asigna al rol ADMIN. Si se quita un privilegio ENDPOINT a ADMIN, vuelve a asignarse en el siguiente arranque.
+- Los demás roles (MANAGER, CASHIER, WAREHOUSE_CLERK) empiezan sin privilegios. Se configuran con `PUT /api/v1/roles/{id}/privileges` (`{"privilegeCodes": ["GET_USERS", ...]}`); el cambio aplica en la siguiente petición, sin volver a iniciar sesión.
+- Los privilegios MENU y ACTION se mantienen con `/api/v1/privileges`. Los ENDPOINT solo se leen.
+- El frontend usa `GET /api/v1/me/menus` para armar el menú y `GET /api/v1/me/privileges` para mostrar u ocultar botones.
+- Las rutas públicas (`/api/v1/auth/**`, `/api/v1/system/**`) y las del propio usuario (`/api/v1/me/**`) no requieren privilegio.
+
 ## Simular un corte de internet
 
 Desconecta una tienda de la central (la tienda sigue funcionando, pero no puede sincronizar):

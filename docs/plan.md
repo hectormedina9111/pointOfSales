@@ -459,6 +459,8 @@ Ejemplos de cada tipo: ENDPOINT `POST /api/v1/sales/{id}/cancellation`; MENU Inv
 
 Cómo se usa: los privilegios ENDPOINT se cargan como autoridades de Spring Security y un filtro compara método y ruta de cada petición; los MENU los consulta el frontend para armar su menú; los ACTION los verifica el código en puntos concretos (por ejemplo, antes de generar un PDF) y el frontend los usa para mostrar u ocultar botones. Los ENDPOINT se registran solos al arrancar, leyendo los controladores, para que no se olvide ninguno.
 
+**Privilegios por defecto:** al arrancar, cada nodo registra los endpoints nuevos y se los asigna al rol ADMIN. Los demás roles (MANAGER, CASHIER, WAREHOUSE_CLERK) empiezan sin privilegios y se configuran desde `PUT /api/v1/roles/{id}/privileges`; cada módulo nuevo propone en su Pull Request los privilegios iniciales de cada rol. Los endpoints propios del usuario (`/api/v1/me/**`) y los públicos (`/api/v1/auth/**`, `/api/v1/system/**`) no requieren privilegio.
+
 ### Catálogo
 
 **category** (categoría)
