@@ -60,6 +60,9 @@ public class SaleUploadHandler implements UploadHandler {
             + " tax_code, tax_rate, tax_amount, subtotal, total, price_list_id, created_at, created_by, updated_at,"
             + " updated_by, version, original_line_id";
 
+    private static final String SERIAL_COLUMNS = "id, sale_line_id, serial_number, returned, created_at, created_by,"
+            + " updated_at, updated_by, version";
+
     private static final String CREDIT_NOTE_COLUMNS = "id, number, customer_id, return_sale_id, branch_id, amount,"
             + " balance, status, issued_at, synced_at, created_at, created_by, updated_at, updated_by, version";
 
@@ -149,6 +152,10 @@ public class SaleUploadHandler implements UploadHandler {
         for (Object[] line : lines) {
             jdbc.update(lineSql, line);
         }
+        String serialSql = "INSERT INTO sale_line_serial (" + SERIAL_COLUMNS + ") VALUES (" + placeholders(9) + ")";
+        for (Object[] serial : serialRows(array(payload, "lines"))) {
+            jdbc.update(serialSql, serial);
+        }
         String paymentSql = "INSERT INTO payment (" + PAYMENT_COLUMNS + ") VALUES (" + placeholders(15) + ")";
         for (Object[] payment : payments) {
             jdbc.update(paymentSql, payment);
@@ -224,6 +231,11 @@ public class SaleUploadHandler implements UploadHandler {
         String claimKey = text(payload, "idempotencyKey");
         for (JsonNode line : array(payload, "lines")) {
             long originalLineId = optionalLong(line, "originalLineId");
+            for (JsonNode serial : array(line, "serials")) {
+                jdbc.update("UPDATE sale_line_serial SET returned = true, updated_at = ?, updated_by = ?,"
+                        + " version = version + 1 WHERE sale_line_id = ? AND serial_number = ?", now, by, originalLineId,
+                        text(serial, "serialNumber"));
+            }
             Map<String, Object> row = jdbc.queryForMap(
                     "SELECT quantity, returned_quantity FROM sale_line WHERE id = ? FOR UPDATE", originalLineId);
             BigDecimal quantity = (BigDecimal) row.get("quantity");
@@ -247,6 +259,27 @@ public class SaleUploadHandler implements UploadHandler {
                 + " AND returned_quantity < quantity) THEN 'PARTIALLY_RETURNED' ELSE 'RETURNED' END,"
                 + " updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?",
                 originalSaleId, now, by, originalSaleId);
+    }
+
+    /** The serial rows of the lines, with the 9 values of SERIAL_COLUMNS: each one is written with its line's id. */
+    private static List<Object[]> serialRows(JsonNode lines) {
+        List<Object[]> rows = new ArrayList<>();
+        for (JsonNode line : lines) {
+            for (JsonNode serial : array(line, "serials")) {
+                rows.add(new Object[] {
+                    longField(serial, "id"),
+                    longField(line, "id"),
+                    text(serial, "serialNumber"),
+                    bool(serial, "returned"),
+                    timestamp(instant(serial, "createdAt")),
+                    text(serial, "createdBy"),
+                    timestamp(instant(serial, "updatedAt")),
+                    text(serial, "updatedBy"),
+                    intField(serial, "version")
+                });
+            }
+        }
+        return rows;
     }
 
     /** The credit note of a return, or null when the return issued none. */
@@ -288,6 +321,11 @@ public class SaleUploadHandler implements UploadHandler {
         for (JsonNode line : array(payload, "lines")) {
             if (!ranges.contains(storeNodeId, longField(line, "id"))) {
                 return false;
+            }
+            for (JsonNode serial : array(line, "serials")) {
+                if (!ranges.contains(storeNodeId, longField(serial, "id"))) {
+                    return false;
+                }
             }
         }
         for (JsonNode payment : array(payload, "payments")) {

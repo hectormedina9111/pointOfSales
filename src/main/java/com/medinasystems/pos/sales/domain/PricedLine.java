@@ -2,6 +2,7 @@ package com.medinasystems.pos.sales.domain;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Objects;
 
 import com.medinasystems.pos.shared.BusinessRuleException;
@@ -15,9 +16,10 @@ import com.medinasystems.pos.shared.BusinessRuleException;
 public record PricedLine(long productId, String sku, String description, BigDecimal quantity, BigDecimal unitPrice,
                          BigDecimal unitCost, String taxCode, BigDecimal taxRate, Long priceListId,
                          boolean requiresExclusiveInvoice, Discount discount, BigDecimal listPrice,
-                         boolean priceOverridden) {
+                         boolean priceOverridden, List<String> serialNumbers) {
 
     public PricedLine {
+        serialNumbers = serialNumbers == null ? List.of() : List.copyOf(serialNumbers);
         if (quantity == null || quantity.signum() <= 0) {
             throw new BusinessRuleException("INVALID_QUANTITY", "The quantity must be greater than zero");
         }

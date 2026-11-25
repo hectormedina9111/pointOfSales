@@ -4,6 +4,7 @@ import static com.medinasystems.pos.sync.UploadPayload.array;
 import static com.medinasystems.pos.sync.UploadPayload.decimal;
 import static com.medinasystems.pos.sync.UploadPayload.instant;
 import static com.medinasystems.pos.sync.UploadPayload.longField;
+import static com.medinasystems.pos.sync.UploadPayload.optionalInstant;
 import static com.medinasystems.pos.sync.UploadPayload.optionalLong;
 import static com.medinasystems.pos.sync.UploadPayload.text;
 
@@ -11,7 +12,9 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,6 +22,7 @@ import org.springframework.stereotype.Component;
 
 import com.medinasystems.pos.inventory.StockMovementType;
 import com.medinasystems.pos.inventory.StockReferenceType;
+import com.medinasystems.pos.inventory.domain.SerialStatus;
 import com.medinasystems.pos.sync.UploadPayload.InvalidPayloadException;
 
 import tools.jackson.databind.JsonNode;
@@ -48,6 +52,15 @@ final class InventoryUploadWriter {
             + " WHERE inventory_item.last_movement_at IS NULL"
             + " OR inventory_item.last_movement_at < EXCLUDED.last_movement_at";
 
+    static final String SERIAL_INSERT_SQL = "INSERT INTO product_serial (id, product_id, serial_number, branch_id, status,"
+            + " received_at, sold_at, last_sale_id, entry_movement_id, synced_at, created_at, created_by, updated_at,"
+            + " updated_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+    static final String SERIAL_UPDATE_SQL = "UPDATE product_serial SET branch_id = ?, status = ?, received_at = ?,"
+            + " sold_at = ?, last_sale_id = ?, entry_movement_id = ?, synced_at = COALESCE(synced_at, ?),"
+            + " updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?";
+    static final String SERIAL_LINK_SQL = "INSERT INTO inventory_movement_serial (id, movement_id, serial_id, created_at,"
+            + " created_by, updated_at, updated_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, 0)";
+
     private final JdbcTemplate jdbc;
 
     InventoryUploadWriter(JdbcTemplate jdbc) {
@@ -69,6 +82,55 @@ final class InventoryUploadWriter {
                     movement.resultingAverageCost(), movement.referenceType().name(), movement.referenceId(),
                     Timestamp.from(movement.movedAt()), movement.userId(), received, createdBy, received, updatedBy, 0);
         }
+    }
+
+    /**
+     * Stores the serial units of an upload. A unit is one row per product and serial number on the central node: when the
+     * unit is already stored under another id (it came from another node), that row is kept and the uploaded id is mapped to
+     * it. The stored state changes only when the uploaded state is newer. Returns the central id of each uploaded unit.
+     */
+    Map<Long, Long> writeSerials(List<Serial> units, String createdBy, String updatedBy, Instant receivedAt) {
+        Timestamp received = Timestamp.from(receivedAt);
+        Map<Long, Long> ids = new HashMap<>();
+        for (Serial unit : units) {
+            List<Map<String, Object>> stored = jdbc.queryForList(
+                    "SELECT id, updated_at FROM product_serial WHERE product_id = ? AND serial_number = ?",
+                    unit.productId(), unit.serialNumber());
+            if (stored.isEmpty()) {
+                jdbc.update(SERIAL_INSERT_SQL, unit.id(), unit.productId(), unit.serialNumber(), unit.branchId(),
+                        unit.status().name(), Timestamp.from(unit.receivedAt()), timestamp(unit.soldAt()),
+                        unit.lastSaleId(), unit.entryMovementId(), received, received,
+                        createdBy, Timestamp.from(unit.updatedAt()), updatedBy);
+                ids.put(unit.id(), unit.id());
+                continue;
+            }
+            long storedId = ((Number) stored.get(0).get("id")).longValue();
+            ids.put(unit.id(), storedId);
+            Instant storedAt = ((Timestamp) stored.get(0).get("updated_at")).toInstant();
+            if (unit.updatedAt().isAfter(storedAt)) {
+                jdbc.update(SERIAL_UPDATE_SQL, unit.branchId(), unit.status().name(), Timestamp.from(unit.receivedAt()),
+                        timestamp(unit.soldAt()), unit.lastSaleId(), unit.entryMovementId(), received,
+                        Timestamp.from(unit.updatedAt()), updatedBy, storedId);
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Inserts the links between movements and serial units. A link names its unit by the uploaded id, which
+     * {@link #writeSerials} mapped to the central id.
+     */
+    void writeMovementSerials(List<MovementSerial> links, Map<Long, Long> serialIds, String createdBy, String updatedBy,
+                              Instant receivedAt) {
+        Timestamp received = Timestamp.from(receivedAt);
+        for (MovementSerial link : links) {
+            jdbc.update(SERIAL_LINK_SQL, link.id(), link.movementId(), serialIds.get(link.serialId()), received,
+                    createdBy, received, updatedBy);
+        }
+    }
+
+    private static Timestamp timestamp(Instant instant) {
+        return instant == null ? null : Timestamp.from(instant);
     }
 
     /** Upserts the stock rows of a branch, each one only when it is newer than the stored one. */
@@ -95,6 +157,28 @@ final class InventoryUploadWriter {
         return movements;
     }
 
+    /** The serial units of a payload, under "serials". Each one is checked before anything is written. */
+    static List<Serial> serialsFrom(JsonNode payload) {
+        List<Serial> serials = new ArrayList<>();
+        for (JsonNode node : array(payload, "serials")) {
+            serials.add(new Serial(longField(node, "id"), longField(node, "productId"), text(node, "serialNumber"),
+                    longField(node, "branchId"), enumField(node, "status", SerialStatus.class),
+                    instant(node, "receivedAt"), optionalInstant(node, "soldAt"), optionalLong(node, "lastSaleId"),
+                    optionalLong(node, "entryMovementId"), instant(node, "updatedAt"), text(node, "updatedBy")));
+        }
+        return serials;
+    }
+
+    /** The movement-serial links of a payload, under "movementSerials". */
+    static List<MovementSerial> movementSerialsFrom(JsonNode payload) {
+        List<MovementSerial> links = new ArrayList<>();
+        for (JsonNode node : array(payload, "movementSerials")) {
+            links.add(new MovementSerial(longField(node, "id"), longField(node, "movementId"),
+                    longField(node, "serialId")));
+        }
+        return links;
+    }
+
     /** The stock rows of a payload, under "items". */
     static List<Item> itemsFrom(JsonNode payload) {
         List<Item> items = new ArrayList<>();
@@ -119,6 +203,15 @@ final class InventoryUploadWriter {
     record Movement(long id, long productId, StockMovementType type, BigDecimal quantity,
                     BigDecimal resultingBalance, BigDecimal unitCost, BigDecimal resultingAverageCost,
                     StockReferenceType referenceType, long referenceId, Instant movedAt, long userId) {
+    }
+
+    /** A serial unit of a payload, with its state after the movements it took part in. */
+    record Serial(long id, long productId, String serialNumber, long branchId, SerialStatus status, Instant receivedAt,
+                  Instant soldAt, Long lastSaleId, Long entryMovementId, Instant updatedAt, String updatedBy) {
+    }
+
+    /** A link between a movement and the serial unit it moved. */
+    record MovementSerial(long id, long movementId, long serialId) {
     }
 
     /** The stock row of a product after the movements, with the copies of the product it carries. */

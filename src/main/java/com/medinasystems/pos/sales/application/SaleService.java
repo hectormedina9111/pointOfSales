@@ -6,11 +6,13 @@ import java.time.Clock;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -54,6 +56,7 @@ import com.medinasystems.pos.sales.domain.SaleOrder;
 import com.medinasystems.pos.sales.domain.SaleStatus;
 import com.medinasystems.pos.sales.domain.SaleTotals;
 import com.medinasystems.pos.sales.domain.SaleType;
+import com.medinasystems.pos.shared.SerialNumbers;
 import com.medinasystems.pos.sales.infrastructure.CreditNoteRepository;
 import com.medinasystems.pos.sales.infrastructure.PaymentMethodRepository;
 import com.medinasystems.pos.sales.infrastructure.ReceiptCounterRepository;
@@ -146,7 +149,7 @@ public class SaleService {
         OrderType.requested(data.orderType());
         CustomerInfo customer = activeCustomer(data.customerId());
         SaleTotals totals = price(data.lines(), Discount.of(data.discountType(), data.discountValue()),
-                storeBranchId(), customer);
+                storeBranchId(), customer, false);
         return SaleQuoteView.from(totals, needsAuthorization(totals.exceedsMaxDiscount(), DISCOUNT_PRIVILEGE, userId),
                 needsAuthorization(overridesPrice(totals), PRICE_PRIVILEGE, userId));
     }
@@ -161,7 +164,7 @@ public class SaleService {
         OrderType orderType = OrderType.requested(data.orderType());
         CustomerInfo customer = activeCustomer(data.customerId());
         SaleTotals totals = price(data.lines(), Discount.of(data.discountType(), data.discountValue()),
-                session.branchId(), customer);
+                session.branchId(), customer, true);
         SaleOrder order = order(customer, orderType, totals, data.authorization(), data.notes(), userId);
         Sale sale = Sale.open(context(session, userId), sales.nextInternalNumber(), totals, order);
         return view(sales.save(sale));
@@ -178,7 +181,7 @@ public class SaleService {
         OrderType orderType = OrderType.requested(data.orderType());
         CustomerInfo customer = activeCustomer(data.customerId());
         SaleTotals totals = price(data.lines(), Discount.of(data.discountType(), data.discountValue()),
-                session.branchId(), customer);
+                session.branchId(), customer, true);
         SaleOrder order = order(customer, orderType, totals, data.authorization(), data.notes(), userId);
         sale.reprice(context(session, userId), totals, order);
         return view(sale);
@@ -221,7 +224,7 @@ public class SaleService {
             CustomerInfo customer = activeCustomer(data.customerId());
             SaleContext context = context(session, userId);
             SaleTotals totals = price(data.lines(), Discount.of(data.discountType(), data.discountValue()),
-                    session.branchId(), customer);
+                    session.branchId(), customer, true);
             SaleOrder order = order(customer, orderType, totals, data.authorization(), data.notes(), userId);
             if (data.holdId() == null) {
                 return Sale.open(context, sales.nextInternalNumber(), totals, order);
@@ -346,7 +349,8 @@ public class SaleService {
     /** The lines of a charged sale, with their ids, for the modules that move stock. */
     private static List<SalePaid.Line> paidLines(Sale sale) {
         return sale.getLines().stream()
-                .map(line -> new SalePaid.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .map(line -> new SalePaid.Line(line.getId(), line.getProductId(), line.getQuantity(),
+                        line.getSerialNumbers()))
                 .toList();
     }
 
@@ -355,8 +359,10 @@ public class SaleService {
      * unit price different from its list price is an override: it keeps the list price and is marked as overridden. The
      * authorization is checked elsewhere, so this method only prices.
      */
-    private SaleTotals price(List<SaleData.Line> lines, Discount saleDiscount, long branchId, CustomerInfo customer) {
+    private SaleTotals price(List<SaleData.Line> lines, Discount saleDiscount, long branchId, CustomerInfo customer,
+                             boolean requireSerials) {
         List<PricedLine> priced = new ArrayList<>();
+        Map<Long, Set<String>> sold = new HashMap<>();
         for (SaleData.Line line : lines == null ? List.<SaleData.Line>of() : lines) {
             SaleableProduct product = products.find(line.productId())
                     .orElseThrow(() -> new ResourceNotFoundException("product", line.productId()));
@@ -368,12 +374,35 @@ public class SaleService {
             BigDecimal requested = line.unitPrice() == null
                     ? null : line.unitPrice().setScale(2, RoundingMode.HALF_UP);
             boolean overridden = requested != null && requested.compareTo(listPrice) != 0;
+            List<String> serials = serialsOf(product, line, requireSerials, sold);
             priced.add(new PricedLine(product.id(), product.sku(), product.name(), line.quantity(),
                     overridden ? requested : listPrice, product.cost(), quote.taxCode(), quote.taxRate(),
                     quote.priceListId(), product.requiresExclusiveInvoice(),
-                    Discount.of(line.discountType(), line.discountValue()), listPrice, overridden));
+                    Discount.of(line.discountType(), line.discountValue()), listPrice, overridden, serials));
         }
         return SaleCalculator.calculate(priced, saleDiscount, properties.maxDiscountPercent());
+    }
+
+    /**
+     * The serial numbers of a line of a product that tracks them, one per unit. A draft that will be charged needs them all
+     * ({@code required}); a quote does not. No serial number may repeat within the sale.
+     */
+    private static List<String> serialsOf(SaleableProduct product, SaleData.Line line, boolean required,
+                                          Map<Long, Set<String>> sold) {
+        if (!product.tracksSerials()) {
+            return List.of();
+        }
+        List<String> serials = SerialNumbers.normalize(line.serialNumbers());
+        if (required) {
+            SerialNumbers.requireOnePerUnit(line.quantity(), serials);
+        }
+        Set<String> seen = sold.computeIfAbsent(product.id(), id -> new HashSet<>());
+        for (String number : serials) {
+            if (!seen.add(number)) {
+                throw new BusinessRuleException("DUPLICATE_SERIAL", "The serial number is repeated in the sale", number);
+            }
+        }
+        return serials;
     }
 
     /** True when any line sells at a price other than its list price. */

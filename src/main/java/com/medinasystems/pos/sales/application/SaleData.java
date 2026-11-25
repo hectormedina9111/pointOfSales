@@ -17,7 +17,7 @@ public final class SaleData {
      * means the list price; a different one is a price change, which needs an authorization.
      */
     public record Line(long productId, BigDecimal quantity, DiscountType discountType, BigDecimal discountValue,
-                       BigDecimal unitPrice) {
+                       BigDecimal unitPrice, List<String> serialNumbers) {
     }
 
     /**
@@ -62,7 +62,7 @@ public final class SaleData {
     }
 
     /** One line of a return: a line of the original sale and the quantity that comes back. */
-    public record ReturnLine(long saleLineId, BigDecimal quantity) {
+    public record ReturnLine(long saleLineId, BigDecimal quantity, List<String> serialNumbers) {
     }
 
     /**

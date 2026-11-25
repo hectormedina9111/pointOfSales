@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 import com.medinasystems.pos.shared.BusinessRuleException;
+import com.medinasystems.pos.shared.SerialNumbers;
 
 /**
  * Computes what a return refunds. It is pure: it receives the lines of the original sale (their quantities, totals and
@@ -71,12 +72,33 @@ public final class ReturnCalculator {
                 throw new BusinessRuleException("RETURN_QUANTITY_EXCEEDED",
                         "The quantity is more than the quantity left to return");
             }
+            List<String> serials = serialsOf(line, request, quantity);
             BigDecimal refunded = refundedByLine.getOrDefault(line.id(), Money.ZERO);
             BigDecimal amount = amountOf(line, quantity, refunded);
             TaxSplit split = TaxSplit.of(amount, line.taxRate());
-            calculated.add(new CalculatedReturnLine(line, quantity, split.taxableBase(), split.taxAmount(), amount));
+            calculated.add(new CalculatedReturnLine(line, quantity, split.taxableBase(), split.taxAmount(), amount,
+                    serials));
         }
         return totalsOf(calculated);
+    }
+
+    /**
+     * The serial numbers that a return line brings back. A product that tracks serials needs one per unit, each one
+     * still returnable in the original line; a product without serials takes none.
+     */
+    private static List<String> serialsOf(ReturnSourceLine line, ReturnLineRequest request, BigDecimal quantity) {
+        if (!line.tracksSerials()) {
+            return List.of();
+        }
+        List<String> serials = SerialNumbers.normalize(request.serialNumbers());
+        SerialNumbers.requireOnePerUnit(quantity, serials);
+        for (String number : serials) {
+            if (!line.returnableSerialNumbers().contains(number)) {
+                throw new BusinessRuleException("SERIAL_NOT_FOUND",
+                        "The serial number was not sold in this line or was already returned", number);
+            }
+        }
+        return serials;
     }
 
     private static BigDecimal amountOf(ReturnSourceLine line, BigDecimal quantity, BigDecimal refunded) {

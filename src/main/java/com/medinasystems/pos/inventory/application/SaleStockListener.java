@@ -2,6 +2,7 @@ package com.medinasystems.pos.inventory.application;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -43,15 +44,18 @@ public class SaleStockListener {
     private final InventoryItemRepository items;
     private final Outbox outbox;
     private final NodeProperties node;
+    private final SerialTrail serialTrail;
     private final AuditorAware<String> auditor;
 
     public SaleStockListener(StockLedger ledger, SaleableProducts products, InventoryItemRepository items,
-                             Outbox outbox, NodeProperties node, AuditorAware<String> auditor) {
+                             Outbox outbox, NodeProperties node, SerialTrail serialTrail,
+                             AuditorAware<String> auditor) {
         this.ledger = ledger;
         this.products = products;
         this.items = items;
         this.outbox = outbox;
         this.node = node;
+        this.serialTrail = serialTrail;
         this.auditor = auditor;
     }
 
@@ -59,30 +63,34 @@ public class SaleStockListener {
     @EventListener
     public void onSalePaid(SalePaid event) {
         Map<Long, BigDecimal> quantities = new TreeMap<>();
+        Map<Long, List<String>> serials = new HashMap<>();
         for (SalePaid.Line line : event.lines()) {
             quantities.merge(line.productId(), line.quantity(), BigDecimal::add);
+            serials.computeIfAbsent(line.productId(), productId -> new ArrayList<>()).addAll(line.serialNumbers());
         }
-        move(event.branchId(), event.userId(), quantities, StockMovementType.SALE_OUT, StockReferenceType.SALE,
-                event.saleId());
+        move(event.branchId(), event.userId(), quantities, serials, StockMovementType.SALE_OUT,
+                StockReferenceType.SALE, event.saleId());
     }
 
     /** A return was created: its products go back to the stock of the branch that receives them. */
     @EventListener
     public void onSaleReturned(SaleReturned event) {
         Map<Long, BigDecimal> quantities = new TreeMap<>();
+        Map<Long, List<String>> serials = new HashMap<>();
         for (SaleReturned.Line line : event.lines()) {
             quantities.merge(line.productId(), line.quantity(), BigDecimal::add);
+            serials.computeIfAbsent(line.productId(), productId -> new ArrayList<>()).addAll(line.serialNumbers());
         }
-        move(event.branchId(), event.userId(), quantities, StockMovementType.RETURN_IN, StockReferenceType.SALE_RETURN,
-                event.returnSaleId());
+        move(event.branchId(), event.userId(), quantities, serials, StockMovementType.RETURN_IN,
+                StockReferenceType.SALE_RETURN, event.returnSaleId());
     }
 
     /**
      * Applies one movement per product, then queues them when this node is a store. The central node never sells, but a
      * movement made there is not uploaded.
      */
-    private void move(long branchId, long userId, Map<Long, BigDecimal> quantities, StockMovementType type,
-                      StockReferenceType reference, long referenceId) {
+    private void move(long branchId, long userId, Map<Long, BigDecimal> quantities, Map<Long, List<String>> serials,
+                      StockMovementType type, StockReferenceType reference, long referenceId) {
         List<StockMovement> moved = new ArrayList<>();
         for (Map.Entry<Long, BigDecimal> entry : quantities.entrySet()) {
             if (!tracksInventory(entry.getKey())) {
@@ -90,14 +98,16 @@ public class SaleStockListener {
             }
             BigDecimal quantity = entry.getValue();
             BigDecimal signed = type == StockMovementType.SALE_OUT ? quantity.negate() : quantity;
-            moved.add(ledger.apply(branchId, entry.getKey(), type, signed, null, reference, referenceId, userId));
+            List<String> numbers = serials.getOrDefault(entry.getKey(), List.of());
+            moved.add(ledger.apply(branchId, entry.getKey(), type, signed, null, numbers, reference, referenceId,
+                    userId));
         }
         if (moved.isEmpty() || !node.isStore()) {
             return;
         }
         String by = auditor.getCurrentAuditor().orElse(SYSTEM_AUDITOR);
         outbox.enqueue(InventoryMovementsDocument.EVENT_TYPE, InventoryMovementsDocument.of(branchId, by, moved,
-                ResultingStock.of(items, moved, branchId)));
+                ResultingStock.of(items, moved, branchId), serialTrail.of(moved)));
     }
 
     private boolean tracksInventory(long productId) {

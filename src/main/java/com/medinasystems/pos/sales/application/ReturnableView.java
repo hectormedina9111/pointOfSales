@@ -92,20 +92,22 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
     public record Line(Long saleLineId, Long productId, String productName, String sku, BigDecimal quantity,
                        BigDecimal returnedQuantity, BigDecimal returnableQuantity, BigDecimal netTotal,
                        BigDecimal refundedAmount, BigDecimal unitPrice, BigDecimal unitCost, String taxCode,
-                       BigDecimal taxRate, BigDecimal listPrice, Long priceListId, boolean priceOverridden) {
+                       BigDecimal taxRate, BigDecimal listPrice, Long priceListId, boolean priceOverridden,
+                       boolean tracksSerials, List<String> serialNumbers, List<String> returnableSerialNumbers) {
 
         /** The line as a return copies it. */
         public ReturnSourceLine toSource() {
             return new ReturnSourceLine(saleLineId, productId, sku, productName, quantity, returnedQuantity,
                     returnableQuantity, netTotal, unitPrice, unitCost, taxCode, taxRate, listPrice, priceListId,
-                    priceOverridden);
+                    priceOverridden, tracksSerials, serialNumbers, returnableSerialNumbers);
         }
 
         static Line of(ReturnSourceLine source, BigDecimal refunded) {
             return new Line(source.id(), source.productId(), source.description(), source.sku(), source.quantity(),
                     source.returnedQuantity(), source.returnableQuantity(), source.total(), refunded,
                     source.unitPrice(), source.unitCost(), source.taxCode(), source.taxRate(), source.listPrice(),
-                    source.priceListId(), source.priceOverridden());
+                    source.priceListId(), source.priceOverridden(), source.tracksSerials(), source.serialNumbers(),
+                    source.returnableSerialNumbers());
         }
     }
 }

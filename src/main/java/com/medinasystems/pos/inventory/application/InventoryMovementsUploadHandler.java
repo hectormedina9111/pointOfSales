@@ -5,7 +5,10 @@ import static com.medinasystems.pos.sync.UploadPayload.text;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -14,6 +17,8 @@ import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.inventory.StockReferenceType;
 import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Item;
 import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Movement;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.MovementSerial;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Serial;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.security.UserDirectory;
 import com.medinasystems.pos.sync.StoreIdRanges;
@@ -77,6 +82,19 @@ public class InventoryMovementsUploadHandler implements UploadHandler {
                 return UploadOutcome.rejected("INVALID_PAYLOAD");
             }
         }
+        for (Serial unit : upload.serials()) {
+            if (!ranges.contains(storeNodeId, unit.id())) {
+                return UploadOutcome.rejected("ID_OUT_OF_RANGE");
+            }
+        }
+        for (MovementSerial link : upload.movementSerials()) {
+            if (!ranges.contains(storeNodeId, link.id())) {
+                return UploadOutcome.rejected("ID_OUT_OF_RANGE");
+            }
+        }
+        if (!linksItsUnits(upload)) {
+            return UploadOutcome.rejected("INVALID_PAYLOAD");
+        }
         if (writer.exists("SELECT COUNT(*) FROM inventory_movement WHERE id = ?", upload.movements().get(0).id())) {
             return UploadOutcome.accepted();
         }
@@ -95,13 +113,29 @@ public class InventoryMovementsUploadHandler implements UploadHandler {
         }
         writer.writeMovements(upload.branchId(), upload.movements(), upload.createdBy(), upload.updatedBy(),
                 clock.instant());
+        Map<Long, Long> serialIds = writer.writeSerials(upload.serials(), upload.createdBy(), upload.updatedBy(),
+                clock.instant());
+        writer.writeMovementSerials(upload.movementSerials(), serialIds, upload.createdBy(), upload.updatedBy(),
+                clock.instant());
         writer.writeItems(upload.branchId(), upload.items(), upload.createdBy(), upload.updatedBy(), clock.instant());
         return UploadOutcome.accepted();
     }
 
+    /**
+     * Every link names a unit and a movement of this batch, both in the payload.
+     */
+    private static boolean linksItsUnits(Upload upload) {
+        Set<Long> units = new HashSet<>();
+        upload.serials().forEach(unit -> units.add(unit.id()));
+        Set<Long> movements = new HashSet<>();
+        upload.movements().forEach(movement -> movements.add(movement.id()));
+        return upload.movementSerials().stream().allMatch(link -> units.contains(link.serialId())
+                && movements.contains(link.movementId()));
+    }
+
     /** Every field of an INVENTORY_MOVEMENTS payload, read and checked before anything is written. */
     private record Upload(long branchId, String createdBy, String updatedBy, List<Movement> movements,
-                          List<Item> items) {
+                          List<Item> items, List<Serial> serials, List<MovementSerial> movementSerials) {
 
         static Upload from(JsonNode payload) {
             List<Movement> movements = InventoryUploadWriter.movementsFrom(payload);
@@ -109,7 +143,8 @@ public class InventoryMovementsUploadHandler implements UploadHandler {
                 throw new InvalidPayloadException("movements");
             }
             return new Upload(longField(payload, "branchId"), text(payload, "createdBy"),
-                    text(payload, "updatedBy"), movements, InventoryUploadWriter.itemsFrom(payload));
+                    text(payload, "updatedBy"), movements, InventoryUploadWriter.itemsFrom(payload),
+                    InventoryUploadWriter.serialsFrom(payload), InventoryUploadWriter.movementSerialsFrom(payload));
         }
 
         /** Every product the batch touches: in its movements and its stock rows. */
@@ -117,6 +152,7 @@ public class InventoryMovementsUploadHandler implements UploadHandler {
             List<Long> ids = new ArrayList<>();
             movements.forEach(movement -> ids.add(movement.productId()));
             items.forEach(item -> ids.add(item.productId()));
+            serials.forEach(unit -> ids.add(unit.productId()));
             return ids.stream().distinct().toList();
         }
     }

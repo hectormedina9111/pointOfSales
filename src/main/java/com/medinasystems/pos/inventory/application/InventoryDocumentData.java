@@ -12,6 +12,11 @@ import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
 public record InventoryDocumentData(InventoryDocumentType type, Long branchId, String reason, String notes,
                                     String idempotencyKey, List<LineData> lines) {
 
-    public record LineData(long productId, BigDecimal quantity, BigDecimal countedQuantity, BigDecimal unitCost) {
+    /**
+     * One line. {@code serialNumbers} lists one serial number per unit of a product that tracks them: in an entry or an
+     * exit, the units moved; in an adjustment, every unit physically present.
+     */
+    public record LineData(long productId, BigDecimal quantity, BigDecimal countedQuantity, BigDecimal unitCost,
+                           List<String> serialNumbers) {
     }
 }

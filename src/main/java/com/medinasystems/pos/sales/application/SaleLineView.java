@@ -1,6 +1,7 @@
 package com.medinasystems.pos.sales.application;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import com.medinasystems.pos.sales.domain.CalculatedLine;
 import com.medinasystems.pos.sales.domain.DiscountType;
@@ -17,7 +18,8 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                            BigDecimal unitPrice, BigDecimal listPrice, boolean priceOverridden, String taxCode,
                            BigDecimal taxRate, Long priceListId, DiscountType discountType, BigDecimal discountValue,
                            BigDecimal discountAmount, BigDecimal subtotal, BigDecimal taxAmount, BigDecimal total,
-                           BigDecimal returnedQuantity, Long originalLineId) {
+                           BigDecimal returnedQuantity, Long originalLineId, List<String> serialNumbers,
+                           List<String> returnedSerialNumbers) {
 
     public static SaleLineView from(CalculatedLine calculated) {
         PricedLine line = calculated.line();
@@ -26,7 +28,7 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                 line.taxRate(), line.priceListId(), line.discount() == null ? null : line.discount().type(),
                 line.discount() == null ? null : line.discount().value(),
                 calculated.discountAmount(), calculated.subtotal(), calculated.taxAmount(), calculated.total(),
-                BigDecimal.ZERO, null);
+                BigDecimal.ZERO, null, line.serialNumbers(), List.of());
     }
 
     public static SaleLineView from(SaleLine line) {
@@ -34,6 +36,7 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                 line.getDescription(), line.getQuantity(), line.getUnitPrice(), line.getListPrice(),
                 line.isPriceOverridden(), line.getTaxCode(), line.getTaxRate(), line.getPriceListId(),
                 line.getDiscountType(), line.getDiscountValue(), line.getDiscountAmount(), line.getSubtotal(),
-                line.getTaxAmount(), line.getTotal(), line.getReturnedQuantity(), line.getOriginalLineId());
+                line.getTaxAmount(), line.getTotal(), line.getReturnedQuantity(), line.getOriginalLineId(),
+                line.getSerialNumbers(), line.getReturnedSerialNumbers());
     }
 }

@@ -27,6 +27,7 @@ import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.organization.CompanyDirectory;
 import com.medinasystems.pos.organization.CompanyInfo;
+import com.medinasystems.pos.sales.domain.CalculatedReturnLine;
 import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.Payment;
 import com.medinasystems.pos.sales.domain.PaymentDraft;
@@ -40,6 +41,7 @@ import com.medinasystems.pos.sales.domain.ReturnOrigin;
 import com.medinasystems.pos.sales.domain.ReturnSourceLine;
 import com.medinasystems.pos.sales.domain.ReturnTotals;
 import com.medinasystems.pos.sales.domain.Sale;
+import com.medinasystems.pos.sales.domain.SaleLine;
 import com.medinasystems.pos.sales.domain.SaleType;
 import com.medinasystems.pos.sales.infrastructure.CreditNoteRepository;
 import com.medinasystems.pos.sales.infrastructure.PaymentRepository;
@@ -214,6 +216,7 @@ public class SaleReturnService {
         Sale ret = Sale.refund(SaleService.context(session, userId), sales.nextInternalNumber(), origin, totals,
                 data.reason(), method, authorizedBy, refunds, receiptNumber, data.idempotencyKey(), clock.instant());
         locked.ifPresent(sale -> sale.registerReturn(returnedByLine(totals)));
+        locked.ifPresent(sale -> markReturnedSerials(sale, totals));
         Sale saved = sales.saveAndFlush(ret);
 
         CreditNote note = null;
@@ -307,7 +310,19 @@ public class SaleReturnService {
         if (requested == null) {
             return List.of();
         }
-        return requested.stream().map(line -> new ReturnLineRequest(line.saleLineId(), line.quantity())).toList();
+        return requested.stream()
+                .map(line -> new ReturnLineRequest(line.saleLineId(), line.quantity(), line.serialNumbers())).toList();
+    }
+
+    /** Marks the serial numbers that this return brings back as returned on the lines of the sale. */
+    private static void markReturnedSerials(Sale sale, ReturnTotals totals) {
+        Map<Long, SaleLine> byId = new HashMap<>();
+        sale.getLines().forEach(line -> byId.put(line.getId(), line));
+        for (CalculatedReturnLine line : totals.lines()) {
+            if (!line.serialNumbers().isEmpty()) {
+                byId.get(line.original().id()).markSerialsReturned(line.serialNumbers());
+            }
+        }
     }
 
     private static Map<Long, BigDecimal> returnedByLine(ReturnTotals totals) {
@@ -386,7 +401,8 @@ public class SaleReturnService {
     /** The lines of a return document, with their ids, for the modules that move stock back. */
     private static List<SaleReturned.Line> returnedLines(Sale ret) {
         return ret.getLines().stream()
-                .map(line -> new SaleReturned.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .map(line -> new SaleReturned.Line(line.getId(), line.getProductId(), line.getQuantity(),
+                        line.getSerialNumbers()))
                 .toList();
     }
 

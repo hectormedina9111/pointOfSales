@@ -14,7 +14,10 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +27,8 @@ import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.inventory.StockReferenceType;
 import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Item;
 import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Movement;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.MovementSerial;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Serial;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.security.UserDirectory;
@@ -92,7 +97,7 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
         if (!idsInRange(storeNodeId, upload)) {
             return UploadOutcome.rejected("ID_OUT_OF_RANGE");
         }
-        if (!referencesItsDocument(upload)) {
+        if (!referencesItsDocument(upload) || !linksItsUnits(upload)) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
         // The store sends an item again when it has not seen the answer: a document that is already here is applied.
@@ -133,6 +138,8 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                     upload.updatedBy(), 0);
         }
         writer.writeMovements(upload.branchId(), upload.movements(), upload.createdBy(), upload.updatedBy(), receivedAt);
+        Map<Long, Long> serialIds = writer.writeSerials(upload.serials(), upload.createdBy(), upload.updatedBy(), receivedAt);
+        writer.writeMovementSerials(upload.movementSerials(), serialIds, upload.createdBy(), upload.updatedBy(), receivedAt);
         writer.writeItems(upload.branchId(), upload.items(), upload.createdBy(), upload.updatedBy(), receivedAt);
     }
 
@@ -150,7 +157,30 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                 return false;
             }
         }
+        for (Serial unit : upload.serials()) {
+            if (!ranges.contains(storeNodeId, unit.id())) {
+                return false;
+            }
+        }
+        for (MovementSerial link : upload.movementSerials()) {
+            if (!ranges.contains(storeNodeId, link.id())) {
+                return false;
+            }
+        }
         return true;
+    }
+
+    /**
+     * Every link names a unit and a movement of this document, both in the payload. The store sends the units its movements
+     * moved in the same payload, so the link always finds its unit.
+     */
+    private static boolean linksItsUnits(Upload upload) {
+        Set<Long> units = new HashSet<>();
+        upload.serials().forEach(unit -> units.add(unit.id()));
+        Set<Long> movements = new HashSet<>();
+        upload.movements().forEach(movement -> movements.add(movement.id()));
+        return upload.movementSerials().stream().allMatch(link -> units.contains(link.serialId())
+                && movements.contains(link.movementId()));
     }
 
     /** Every movement belongs to this document, so its reference must point to it. */
@@ -169,7 +199,8 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
     private record Upload(long id, String number, InventoryDocumentType type, long branchId, String reason,
                           String notes, String idempotencyKey, Instant postedAt, long userId, Instant createdAt,
                           String createdBy, Instant updatedAt, String updatedBy, int version, List<Line> lines,
-                          List<Movement> movements, List<Item> items) {
+                          List<Movement> movements, List<Item> items, List<Serial> serials,
+                          List<MovementSerial> movementSerials) {
 
         static Upload from(JsonNode payload) {
             List<Line> lines = new ArrayList<>();
@@ -180,6 +211,8 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
             }
             List<Movement> movements = InventoryUploadWriter.movementsFrom(payload);
             List<Item> items = InventoryUploadWriter.itemsFrom(payload);
+            List<Serial> serials = InventoryUploadWriter.serialsFrom(payload);
+            List<MovementSerial> links = InventoryUploadWriter.movementSerialsFrom(payload);
             if (lines.isEmpty() || movements.isEmpty()) {
                 throw new InvalidPayloadException("lines");
             }
@@ -189,7 +222,7 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                     optionalText(payload, "idempotencyKey"), instant(payload, "postedAt"),
                     longField(payload, "userId"), instant(payload, "createdAt"), text(payload, "createdBy"),
                     instant(payload, "updatedAt"), text(payload, "updatedBy"), intField(payload, "version"),
-                    lines, movements, items);
+                    lines, movements, items, serials, links);
         }
 
         /** Every product the document touches: in its lines, its movements and its stock rows. */
@@ -198,6 +231,7 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
             lines.forEach(line -> ids.add(line.productId()));
             movements.forEach(movement -> ids.add(movement.productId()));
             items.forEach(item -> ids.add(item.productId()));
+            serials.forEach(unit -> ids.add(unit.productId()));
             return ids.stream().distinct().toList();
         }
     }

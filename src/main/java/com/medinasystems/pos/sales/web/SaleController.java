@@ -43,6 +43,7 @@ import com.medinasystems.pos.sales.domain.DiscountType;
 import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.SaleStatus;
 import com.medinasystems.pos.sales.domain.SaleType;
+import com.medinasystems.pos.shared.SerialNumbers;
 import com.medinasystems.pos.shared.StoreOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
 
@@ -192,10 +193,11 @@ public class SaleController {
                               @NotNull @Positive BigDecimal quantity,
                               DiscountType discountType,
                               @PositiveOrZero BigDecimal discountValue,
-                              @Positive BigDecimal unitPrice) {
+                              @Positive BigDecimal unitPrice,
+                              List<@NotBlank @Size(max = SerialNumbers.MAX_LENGTH) String> serialNumbers) {
 
         SaleData.Line toData() {
-            return new SaleData.Line(productId, quantity, discountType, discountValue, unitPrice);
+            return new SaleData.Line(productId, quantity, discountType, discountValue, unitPrice, serialNumbers);
         }
     }
 
@@ -272,10 +274,11 @@ public class SaleController {
     }
 
     /** One line to return: a line of the original sale and the quantity that comes back. */
-    public record ReturnLineRequest(@NotNull Long saleLineId, @NotNull @Positive BigDecimal quantity) {
+    public record ReturnLineRequest(@NotNull Long saleLineId, @NotNull @Positive BigDecimal quantity,
+                                    List<@NotBlank @Size(max = SerialNumbers.MAX_LENGTH) String> serialNumbers) {
 
         SaleData.ReturnLine toData() {
-            return new SaleData.ReturnLine(saleLineId, quantity);
+            return new SaleData.ReturnLine(saleLineId, quantity, serialNumbers);
         }
     }
 
