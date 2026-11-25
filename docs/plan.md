@@ -2331,3 +2331,28 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 **Mensajes.** Nuevos en ambos archivos: `PRODUCT_NOT_INVENTORIED`, `SERIALS_REQUIRED`, `INVENTORY_BRANCH_NOT_OPERATED`, `INSUFFICIENT_STOCK`, `INVALID_COUNTED_QUANTITY`, `QUANTITY_PRECISION_NOT_ALLOWED`, `INVALID_SORT`, `INVENTORY_BRANCH_REQUIRED`, `INVENTORY_REASON_REQUIRED`, `DUPLICATE_DOCUMENT_LINE`, `ADJUSTMENT_WITHOUT_CHANGE`, `DUPLICATE_DOCUMENT_NUMBER`, `DUPLICATE_IDEMPOTENCY_KEY`.
 
 **Sin compilar ni probar en esta sesión:** `./mvnw verify` y el CI quedan para verificar.
+
+### Decisiones de implementación: inventario paso 2 (ventas y devoluciones)
+
+**API pública que se agrega (raíz del módulo `sales`).** `SalePaid(saleId, branchId, userId, lines)` se publica al cobrar, directo o desde una orden en espera, en la transacción del cobro y después de guardar la venta y sus líneas. `SaleReturned(returnSaleId, branchId, userId, lines)` se publica al crear una devolución, propia o de otra sucursal. Cada línea lleva el id de la línea del documento. `SaleReceipts.receiptNumbers(ids)` devuelve los números de recibo de ventas y devoluciones en una sola consulta. El central no publica estos eventos: inserta los documentos que suben las tiendas.
+
+**Movimientos al cobrar y al devolver (`SaleStockListener`).** Síncrono (`@EventListener`), en la misma transacción. Las cantidades de cada producto se suman en un solo movimiento y los productos se procesan en orden de id, así dos documentos bloquean las filas en el mismo orden. Una venta registra `SALE_OUT` (referencia `SALE`, id de la venta); una devolución registra `RETURN_IN` (referencia `SALE_RETURN`, id de la devolución) en la sucursal que la recibe. Los servicios y los productos sin inventario se omiten. Las devoluciones usan el costo promedio vigente y no lo cambian. Una salida que deja saldo negativo, sin permiso de la sucursal, lanza `INSUFFICIENT_STOCK`, que revierte el cobro completo.
+
+**Desviaciones respecto del paso.**
+
+- Un producto con seriales sí mueve cantidad en `SALE` y `SALE_RETURN`, como pide el paso; el resto de los tipos (entrada, salida, ajuste y transferencia) sigue rechazándolo con `SERIALS_REQUIRED` hasta el paso 3.
+- Una devolución repone aunque el producto esté desactivado después de la venta. Una venta de un producto inactivo sigue rechazándose con `PRODUCT_INACTIVE`.
+- `BusinessRuleException` admite argumentos del mensaje. `INSUFFICIENT_STOCK` los usa para nombrar el producto (SKU y nombre) y el saldo disponible, en ambos archivos de mensajes.
+
+**Subida a la central (`INVENTORY_MOVEMENTS`).** La tienda encola en la misma transacción los movimientos del documento y el estado resultante de cada producto; `createdBy` es el usuario que hizo la venta o la devolución. La central (`InventoryMovementsUploadHandler`) valida la sucursal, el rango de ids, que la referencia sea `SALE` o `SALE_RETURN`, y la existencia de sucursal, usuarios y productos (`RETRY` si falta alguno). Un lote cuyo primer movimiento ya existe se acepta sin escribir de nuevo. La escritura de movimientos y existencias se comparte con el manejador de documentos (`InventoryUploadWriter`), que ya no duplica SQL.
+
+**Disponibilidad (`GET /api/v1/inventory/availability?productIds=`).** Hasta 100 productos (`AVAILABILITY_TOO_MANY_PRODUCTS`). La tienda responde para su sucursal; pedir otra da 404. La central exige `branchId`. Cada producto responde `productId`, `tracksInventory`, `quantity` (cero sin existencia o sin inventario) y `allowNegativeStock`. Un producto desconocido da 404. Privilegio `GET_INVENTORY_AVAILABILITY`, concedido a `CASHIER` y `WAREHOUSE_CLERK` (y, por herencia, a `MANAGER`).
+
+**Números de recibo en los movimientos.** La lista de movimientos pide a ventas los números de recibo de una página completa en una sola consulta. Para `SALE` y `SALE_RETURN` la referencia muestra el recibo; el inventario no lee tablas de ventas.
+
+**Pendiente y límites.**
+
+- Sin migración nueva: no hay tablas nuevas en este paso.
+- La disponibilidad consulta el catálogo producto por producto, porque el catálogo no tiene consulta por lote. Con 100 productos son 100 lecturas; si pesa, se agrega una consulta por lote al catálogo.
+- Los mensajes de respaldo del código siguen en inglés, como en los pasos anteriores; el texto visible sale de los archivos de mensajes.
+- Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (dependencias `inventory` → `sales`) y el CI quedan para verificar.
