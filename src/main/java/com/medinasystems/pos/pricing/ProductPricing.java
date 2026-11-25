@@ -18,5 +18,15 @@ public interface ProductPricing {
      * @throws com.medinasystems.pos.shared.ResourceNotFoundException when the product does not exist
      * @throws com.medinasystems.pos.shared.BusinessRuleException      INVALID_QUANTITY or PRODUCT_INACTIVE
      */
-    PriceQuote quote(long productId, BigDecimal quantity, Long branchId, LocalDate date);
+    default PriceQuote quote(long productId, BigDecimal quantity, Long branchId, LocalDate date) {
+        return quote(productId, quantity, branchId, null, date);
+    }
+
+    /**
+     * Like {@link #quote(long, BigDecimal, Long, LocalDate)}, but the customer's price list is tried first. It decides
+     * the price only when it gives a price for the product on that date and quantity; otherwise the branch rules apply.
+     *
+     * @param priceListId price list of the customer; null when the customer has none
+     */
+    PriceQuote quote(long productId, BigDecimal quantity, Long branchId, Long priceListId, LocalDate date);
 }
