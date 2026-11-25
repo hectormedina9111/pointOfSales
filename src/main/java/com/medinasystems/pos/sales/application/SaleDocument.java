@@ -15,10 +15,11 @@ import com.medinasystems.pos.sales.domain.SaleLine;
  */
 public record SaleDocument(long id, long internalNumber, String receiptNumber, String type, String documentType,
                            String status, long branchId, long cashRegisterId, long cashSessionId, long cashierId,
-                           boolean exclusive, BigDecimal subtotal, BigDecimal discountTotal, BigDecimal exemptAmount,
+                           long customerId, String orderType, boolean exclusive, BigDecimal subtotal, BigDecimal discountTotal, BigDecimal exemptAmount,
                            BigDecimal taxableAmount15, BigDecimal taxableAmount18, BigDecimal taxTotal,
                            BigDecimal total, BigDecimal amountPaid, BigDecimal changeDue, String paidAt,
-                           String discountType, BigDecimal discountValue, Long discountAuthorizedBy, String notes,
+                           String discountType, BigDecimal discountValue, Long discountAuthorizedBy,
+                           Long priceAuthorizedBy, String notes,
                            String idempotencyKey, String fiscalStatus, String createdAt, String createdBy,
                            String updatedAt, String updatedBy, Integer version, List<LineDocument> lines,
                            List<PaymentDocument> payments) {
@@ -28,11 +29,13 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
     public static SaleDocument of(Sale sale) {
         return new SaleDocument(sale.getId(), sale.getInternalNumber(), sale.getReceiptNumber(), sale.getType(),
                 sale.getDocumentType(), sale.getStatus().name(), sale.getBranchId(), sale.getCashRegisterId(),
-                sale.getCashSessionId(), sale.getCashierId(), sale.isExclusive(), sale.getSubtotal(),
+                sale.getCashSessionId(), sale.getCashierId(), sale.getCustomerId(), name(sale.getOrderType()),
+                sale.isExclusive(), sale.getSubtotal(),
                 sale.getDiscountTotal(), sale.getExemptAmount(), sale.getTaxableAmount15(),
                 sale.getTaxableAmount18(), sale.getTaxTotal(), sale.getTotal(), sale.getAmountPaid(),
                 sale.getChangeDue(), text(sale.getPaidAt()), name(sale.getDiscountType()), sale.getDiscountValue(),
-                sale.getDiscountAuthorizedBy(), sale.getNotes(), sale.getIdempotencyKey(), sale.getFiscalStatus(),
+                sale.getDiscountAuthorizedBy(), sale.getPriceAuthorizedBy(), sale.getNotes(), sale.getIdempotencyKey(),
+                sale.getFiscalStatus(),
                 text(sale.getCreatedAt()), sale.getCreatedBy(), text(sale.getUpdatedAt()), sale.getUpdatedBy(),
                 sale.getVersion(),
                 sale.getLines().stream().map(LineDocument::of).toList(),
@@ -41,7 +44,8 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
 
     /** One line of the sale, with the copy of the product as it was sold. */
     public record LineDocument(long id, int lineNumber, long productId, String sku, String description,
-                               BigDecimal quantity, BigDecimal unitPrice, BigDecimal unitCost, String discountType,
+                               BigDecimal quantity, BigDecimal unitPrice, BigDecimal listPrice,
+                               boolean priceOverridden, BigDecimal unitCost, String discountType,
                                BigDecimal discountValue, BigDecimal discountAmount, String taxCode,
                                BigDecimal taxRate, BigDecimal taxAmount, BigDecimal subtotal, BigDecimal total,
                                Long priceListId, String createdAt, String createdBy, String updatedAt,
@@ -49,7 +53,8 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
 
         static LineDocument of(SaleLine line) {
             return new LineDocument(line.getId(), line.getLineNumber(), line.getProductId(), line.getSku(),
-                    line.getDescription(), line.getQuantity(), line.getUnitPrice(), line.getUnitCost(),
+                    line.getDescription(), line.getQuantity(), line.getUnitPrice(), line.getListPrice(),
+                    line.isPriceOverridden(), line.getUnitCost(),
                     name(line.getDiscountType()), line.getDiscountValue(), line.getDiscountAmount(),
                     line.getTaxCode(), line.getTaxRate(), line.getTaxAmount(), line.getSubtotal(), line.getTotal(),
                     line.getPriceListId(), text(line.getCreatedAt()), line.getCreatedBy(),

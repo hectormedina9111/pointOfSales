@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import com.medinasystems.pos.cash.CashSessionDirectory;
+import com.medinasystems.pos.customer.CustomerDirectory;
 import com.medinasystems.pos.sync.UploadHandler;
 import com.medinasystems.pos.sync.UploadOutcome;
 import com.medinasystems.pos.sync.UploadPayload.InvalidPayloadException;
@@ -43,25 +44,29 @@ public class SaleUploadHandler implements UploadHandler {
     private static final String PAID = "PAID";
 
     private static final String SALE_COLUMNS = "id, type, internal_number, receipt_number, document_type, branch_id,"
-            + " cash_register_id, cash_session_id, cashier_id, status, is_exclusive, subtotal, discount_total,"
-            + " exempt_amount, taxable_amount_15, taxable_amount_18, tax_total, total, amount_paid, change_due,"
-            + " paid_at, discount_type, discount_value, discount_authorized_by, notes, idempotency_key,"
-            + " fiscal_status, synced_at, created_at, created_by, updated_at, updated_by, version";
+            + " cash_register_id, cash_session_id, cashier_id, customer_id, order_type, status, is_exclusive, subtotal,"
+            + " discount_total, exempt_amount, taxable_amount_15, taxable_amount_18, tax_total, total, amount_paid,"
+            + " change_due, paid_at, discount_type, discount_value, discount_authorized_by, price_authorized_by, notes,"
+            + " idempotency_key, fiscal_status, synced_at, created_at, created_by, updated_at, updated_by, version";
 
     private static final String LINE_COLUMNS = "id, sale_id, line_number, product_id, sku, description, quantity,"
-            + " unit_price, unit_cost, discount_type, discount_value, discount_amount, tax_code, tax_rate, tax_amount,"
-            + " subtotal, total, price_list_id, created_at, created_by, updated_at, updated_by, version";
+            + " unit_price, list_price, price_overridden, unit_cost, discount_type, discount_value, discount_amount,"
+            + " tax_code, tax_rate, tax_amount, subtotal, total, price_list_id, created_at, created_by, updated_at,"
+            + " updated_by, version";
 
     private static final String PAYMENT_COLUMNS = "id, sale_id, payment_method_id, amount, amount_received, reference,"
             + " card_last4, paid_at, created_at, created_by, updated_at, updated_by, version";
 
     private final JdbcTemplate jdbc;
     private final CashSessionDirectory sessions;
+    private final CustomerDirectory customers;
     private final Clock clock;
 
-    public SaleUploadHandler(JdbcTemplate jdbc, CashSessionDirectory sessions, Clock clock) {
+    public SaleUploadHandler(JdbcTemplate jdbc, CashSessionDirectory sessions, CustomerDirectory customers,
+                             Clock clock) {
         this.jdbc = jdbc;
         this.sessions = sessions;
+        this.customers = customers;
         this.clock = clock;
     }
 
@@ -89,6 +94,7 @@ public class SaleUploadHandler implements UploadHandler {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
         long cashSessionId = longField(payload, "cashSessionId");
+        long customerId = longField(payload, "customerId");
         Object[] sale = saleRow(payload, id, clock.instant());
         List<Object[]> lines = lineRows(id, array(payload, "lines"));
         List<Object[]> payments = paymentRows(id, array(payload, "payments"));
@@ -103,9 +109,13 @@ public class SaleUploadHandler implements UploadHandler {
         if (!sessions.exists(cashSessionId)) {
             return UploadOutcome.retry("CASH_SESSION_MISSING");
         }
+        // The customer may still be on its way from the central node: the store sends the sale again later.
+        if (customers.find(customerId).isEmpty()) {
+            return UploadOutcome.retry("CUSTOMER_MISSING");
+        }
 
-        jdbc.update("INSERT INTO sale (" + SALE_COLUMNS + ") VALUES (" + placeholders(33) + ")", sale);
-        String lineSql = "INSERT INTO sale_line (" + LINE_COLUMNS + ") VALUES (" + placeholders(23) + ")";
+        jdbc.update("INSERT INTO sale (" + SALE_COLUMNS + ") VALUES (" + placeholders(36) + ")", sale);
+        String lineSql = "INSERT INTO sale_line (" + LINE_COLUMNS + ") VALUES (" + placeholders(25) + ")";
         for (Object[] line : lines) {
             jdbc.update(lineSql, line);
         }
@@ -116,7 +126,7 @@ public class SaleUploadHandler implements UploadHandler {
         return UploadOutcome.accepted();
     }
 
-    /** The 33 values of SALE_COLUMNS, in that order. synced_at is the moment the central node received the sale. */
+    /** The 36 values of SALE_COLUMNS, in that order. synced_at is the moment the central node received the sale. */
     private static Object[] saleRow(JsonNode p, long id, Instant receivedAt) {
         return new Object[] {
             id,
@@ -128,6 +138,8 @@ public class SaleUploadHandler implements UploadHandler {
             longField(p, "cashRegisterId"),
             longField(p, "cashSessionId"),
             longField(p, "cashierId"),
+            longField(p, "customerId"),
+            text(p, "orderType"),
             text(p, "status"),
             bool(p, "exclusive"),
             decimal(p, "subtotal"),
@@ -143,6 +155,7 @@ public class SaleUploadHandler implements UploadHandler {
             optionalText(p, "discountType"),
             optionalDecimal(p, "discountValue"),
             optionalLong(p, "discountAuthorizedBy"),
+            optionalLong(p, "priceAuthorizedBy"),
             optionalText(p, "notes"),
             text(p, "idempotencyKey"),
             text(p, "fiscalStatus"),
@@ -155,7 +168,7 @@ public class SaleUploadHandler implements UploadHandler {
         };
     }
 
-    /** The 23 values of LINE_COLUMNS for each line. */
+    /** The 25 values of LINE_COLUMNS for each line. */
     private static List<Object[]> lineRows(long saleId, JsonNode lines) {
         List<Object[]> rows = new ArrayList<>(lines.size());
         for (JsonNode l : lines) {
@@ -168,6 +181,8 @@ public class SaleUploadHandler implements UploadHandler {
                 text(l, "description"),
                 decimal(l, "quantity"),
                 decimal(l, "unitPrice"),
+                decimal(l, "listPrice"),
+                bool(l, "priceOverridden"),
                 optionalDecimal(l, "unitCost"),
                 optionalText(l, "discountType"),
                 optionalDecimal(l, "discountValue"),
