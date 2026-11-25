@@ -27,6 +27,8 @@ public final class SyncTables {
             SyncTable.main("product_tax"),
             SyncTable.main("price_list"),
             SyncTable.main("price_list_item"),
+            SyncTable.main("cash_register"),
+            SyncTable.main("payment_method"),
             SyncTable.child("user_role", "app_user", "user_id"),
             SyncTable.child("user_branch", "app_user", "user_id"),
             SyncTable.child("role_privilege", "role", "role_id"));

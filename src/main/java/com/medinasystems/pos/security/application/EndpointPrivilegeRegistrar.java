@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,9 +31,12 @@ import com.medinasystems.pos.security.infrastructure.RoleRepository;
  * <p>Central only: privileges and roles are master data that the stores receive by replication. If a store
  * created its own rows, their ids would differ from the central ones and the replicated rows would collide on
  * the unique code.
+ *
+ * <p>Order 30: {@link RoleDefaultsSeeder} (order 40) grants by endpoint code, so it must run after this registrar.
  */
 @Component
 @Profile("central")
+@Order(30)
 public class EndpointPrivilegeRegistrar implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(EndpointPrivilegeRegistrar.class);

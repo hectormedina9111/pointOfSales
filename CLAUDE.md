@@ -45,7 +45,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - Borrado lógico con `active`; los documentos (ventas, recibos) nunca se borran, se anulan.
 - `external_code` (código en el ERP) existe solo en `app_user` y `customer`; es opcional y único cuando tiene valor. Los productos **no** llevan código externo.
 - Montos `NUMERIC(14,2)`, cantidades `NUMERIC(12,3)`, tasas `NUMERIC(5,2)`, fechas `TIMESTAMPTZ` (UTC en base de datos).
-- Cada cambio de esquema es una migración Flyway nueva; nunca editar una migración ya aplicada.
+- Cada cambio de esquema es una migración Flyway nueva; nunca editar una migración ya aplicada. Un número de versión que ya usó una rama o PR (aunque se haya cerrado sin unir) no se reutiliza: alguien pudo aplicarlo en su base local.
 
 ## Dinero e impuestos
 
