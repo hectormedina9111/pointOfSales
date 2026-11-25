@@ -2040,3 +2040,18 @@ Este paso implementa "Orden y cobro" y, además, la garantía de que ningún id 
 - **Número interno en la subida:** la central revisa también el número interno, que no está en la lista de ids del plan pero tiene `UNIQUE` en la central.
 - **Autorizaciones repetidas:** si descuento y precio exigen autorización y las credenciales son de un jefe con ambos privilegios, el autorizador se consulta dos veces. Es correcto, pero cuenta dos veces para el bloqueo si la contraseña falla.
 - **Sin compilar ni probar en esta sesión.** No hay caché de Maven en el entorno; `./mvnw verify` queda para el equipo y el CI. Las pruebas van en la segunda etapa, según CLAUDE.md.
+
+### Decisiones de implementación: 3A paso 14 (pantalla de órdenes)
+
+- **Menú:** "Ventas realizadas" pasa a llamarse "Órdenes" (`MENU_SALES_LIST`, ruta `/sales`). `MenuSeeder` ahora actualiza nombre, padre, ruta, icono y orden de los menús que ya existen, con el mismo código, en cada arranque de la central. El estado activo no se toca, para que un menú desactivado siga desactivado. Así las bases existentes ven el nombre nuevo sin migración.
+- **Paginación en la base de datos:** `GET /api/v1/sales` filtra y pagina con la `Specification` (`SaleSpecifications`). Ningún filtro se aplica en memoria.
+- **Filtros nuevos** (todos opcionales, se suman a `status`, `cashSessionId`, `cashierId`, `branchId`, `from` y `to`):
+  - `orderType` (`CASH` o `CREDIT`).
+  - `cashRegisterId`: columna `sale.cash_register_id`, no requiere consultar otro módulo.
+  - `customerId`: columna `sale.customer_id`. La búsqueda por nombre de cliente la hace la pantalla con `customerId`; el backend no une tablas de clientes.
+  - `search`: texto recortado; si está vacío no filtra. Busca en `receipt_number` sin distinguir mayúsculas y, si el texto son solo dígitos (hasta 18), también coincide exactamente con `internal_number`. Los comodines `%` y `_` se tratan como texto.
+  - `minTotal` y `maxTotal`: límites de `sale.total`, inclusivos.
+- **Visibilidad sin cambios:** el cajero sin `ACTION_SALES_VIEW_ALL` ve solo sus ventas, y la tienda ve solo su sucursal. Un `cashierId` o `branchId` distinto se ignora o da lista vacía, como antes.
+- **Orden:** por defecto `createdAt DESC, id DESC`. `sort` acepta cualquier propiedad de la venta; no hay un patrón previo en el proyecto para propiedades inválidas, así que una propiedad inexistente todavía responde 500. Queda pendiente un manejo común para todos los listados.
+- **Detalle:** `GET /api/v1/sales/{id}` devuelve cualquier estado, también `ON_HOLD`. Se aplica la misma regla que al listado: la sucursal que el nodo ve, y para el cajero sin `ACTION_SALES_VIEW_ALL` solo sus propias ventas. Lo demás responde 404, como si la venta no existiera. Antes, el detalle no revisaba al cajero.
+- **Órdenes en espera solo existen en la tienda.** Solo las ventas `PAID` suben a la central; las `ON_HOLD` nunca llegan a ella. La pantalla de órdenes de la central solo muestra ventas cobradas.
