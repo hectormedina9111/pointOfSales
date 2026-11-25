@@ -3,7 +3,6 @@ package com.medinasystems.pos.sales.application;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -236,33 +235,42 @@ public class SaleService {
         });
     }
 
+    /**
+     * One sale of any status (a hold included), under the same rules as the list: the node's branch, and for a cashier
+     * without {@code ACTION_SALES_VIEW_ALL} only his own sales. Anything else answers 404.
+     */
     @Transactional(readOnly = true)
     public SaleView get(long id) {
-        return view(findVisible(id));
+        long current = currentUserId();
+        Sale sale = findVisible(id);
+        if (!authorizer.hasPrivilege(current, ActionAuthorizer.SALES_VIEW_ALL_PRIVILEGE)
+                && !Long.valueOf(current).equals(sale.getCashierId())) {
+            throw new ResourceNotFoundException("sale", id);
+        }
+        return view(sale);
     }
 
     /**
-     * Sales the node can see, newest first. A store lists the sales of its branch; the central node lists all of them.
-     * A store without a branch sees none. Without {@code ACTION_SALES_VIEW_ALL} the list shows only the signed-in
-     * cashier's own sales, whatever {@code cashierId} asks for. {@code branchId} narrows the list to one branch; on a
-     * store, another branch gives an empty list.
+     * Sales the node can see, newest first, filtered and paged in the database. A store lists the sales of its branch;
+     * the central node lists all of them. A store without a branch sees none. Without {@code ACTION_SALES_VIEW_ALL}
+     * the list shows only the signed-in cashier's own sales, whatever {@code cashierId} asks for. {@code branchId}
+     * narrows the list to one branch; on a store, another branch gives an empty list.
      */
     @Transactional(readOnly = true)
-    public Page<SaleSummaryView> list(SaleStatus status, Long cashSessionId, Long cashierId, Long branchId,
-                                      Instant from, Instant to, Pageable pageable) {
+    public Page<SaleSummaryView> list(SaleFilter filter, Pageable pageable) {
         long current = currentUserId();
         Long owner = authorizer.hasPrivilege(current, ActionAuthorizer.SALES_VIEW_ALL_PRIVILEGE)
-                ? cashierId : Long.valueOf(current);
-        Long filterBranch = branchId;
+                ? filter.cashierId() : Long.valueOf(current);
+        Long filterBranch = filter.branchId();
         if (!scope.allBranches()) {
             Optional<Long> node = scope.nodeBranchId();
-            if (node.isEmpty() || (branchId != null && !branchId.equals(node.get()))) {
+            if (node.isEmpty() || (filter.branchId() != null && !filter.branchId().equals(node.get()))) {
                 return Page.empty(pageable);
             }
             filterBranch = node.get();
         }
         return summaries(sales.findAll(
-                SaleSpecifications.matching(filterBranch, status, cashSessionId, owner, from, to), pageable));
+                SaleSpecifications.matching(filter.withScope(filterBranch, owner)), pageable));
     }
 
     /** The data of the printed ticket. Only a paid sale has one. */
