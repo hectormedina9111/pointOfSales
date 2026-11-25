@@ -1941,3 +1941,51 @@ Caso base del criterio de aceptación: L 115.00 con ISV 15 % → base 100.00, IS
 - `sale.synced_at` queda vacío en la tienda. La tienda no sabe todavía qué venta fue aceptada; el estado está en `sync_outbox` (`uploaded_at`, `result`). Decidir si se marca al recibir la respuesta.
 - **Caja compartida por dos tiendas.** La regla por caja de la base de datos rechazaría (con un error que bloquea la cola) una sesión de una caja que dos tiendas abrieran a la vez. Eso solo ocurre si dos tiendas comparten sucursal; hoy la central no lo impide. Decidir si una sucursal puede tener dos tiendas.
 - Sin pruebas (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.
+
+### Decisiones de implementación: 3A paso 10 (clientes)
+
+**API pública que se agrega (raíz de cada módulo)**
+
+- `customer`: `CustomerDirectory.find(id)` devuelve `CustomerInfo` (nombre para mostrar, tipo y número de documento, lista de precios y si está activo). `FINAL_CONSUMER_ID` vale 1. Las ventas la usarán en el siguiente paso.
+- `pricing`: `PriceListDirectory.exists(id)`, para que otros módulos comprueben una lista sin leer sus tablas.
+- `pricing`: `ProductPricing.quote(productId, cantidad, branchId, priceListId, fecha)`. Prueba primero la lista del cliente; si esa lista no da precio para el producto, la cantidad y la fecha, aplica las reglas de la sucursal. Usa `PriceService.resolve`, así que no hay reglas duplicadas. La versión sin lista delega con `null`.
+
+**Tabla y réplica**
+
+- `V16__customers.sql` crea `customer` y siembra el consumidor final (id 1) antes de crear el disparador `sync_log_customer`. Así la siembra no entra en el registro de cambios; la foto inicial de la réplica sí lo incluye.
+- `display_name` es una columna generada. `ReplicaWriter` ahora escribe solo las columnas no generadas (`is_generated = 'NEVER'`) con una lista explícita. Sin este cambio, la réplica de un cliente fallaría.
+- `customer` está en `SyncTables`, después de `price_list`.
+
+**Endpoints (`/api/v1/customers`)**
+
+- GET (lista, con `search` y `active`, paginada, por nombre) y GET `/{id}`: todos los nodos.
+- POST: todos los nodos. En una tienda, además encola `CUSTOMER_CREATED` en la misma transacción.
+- PUT y DELETE (desactiva, no borra): solo la central (`@CentralOnly`).
+- Privilegios: `GET_CUSTOMERS`, `GET_CUSTOMERS_ID`, `POST_CUSTOMERS` y `MENU_CUSTOMERS`. Los reciben el cajero y, por herencia, el jefe de tienda.
+
+**Reglas (`CustomerDetails`, en el dominio)**
+
+- El texto en blanco pasa a null, se recortan los espacios y cada campo tiene su tamaño máximo.
+- Persona (`PERSON`) exige primer nombre y primer apellido; empresa (`COMPANY`) exige razón social. Los campos que no corresponden al tipo se borran.
+- Todo documento distinto de `NONE` exige número. Con `NONE` el número se borra.
+- Errores de datos (422): `CUSTOMER_NAME_REQUIRED`, `CUSTOMER_BUSINESS_NAME_REQUIRED`, `CUSTOMER_DOCUMENT_NUMBER_REQUIRED`, `CUSTOMER_FIELD_TOO_LONG` y `CUSTOMER_PRICE_LIST_NOT_FOUND`.
+- `FINAL_CONSUMER_LOCKED` (422): el consumidor final no se cambia ni se desactiva.
+- Duplicados (409): `DUPLICATE_CUSTOMER_DOCUMENT` si ya hay un cliente activo con el mismo tipo y número de documento; no se revisa para clientes inactivos ni para `NONE`. `DUPLICATE_CUSTOMER_EXTERNAL_CODE` para el código del ERP. Cada nodo revisa solo lo que conoce.
+- `active` es opcional en la petición y vale `true` si no se envía. Así una central puede reactivar un cliente, algo que DELETE no hace.
+
+**Central: `CUSTOMER_CREATED`**
+
+- Inserta la fila con el id que trajo la tienda (`OVERRIDING SYSTEM VALUE`), en su rango, sin usar la secuencia de la central.
+- Revisa que el documento esté completo (`INVALID_PAYLOAD`) y que el código del ERP no exista (`DUPLICATE_CUSTOMER_EXTERNAL_CODE`, rechazo final). Si la lista de precios aún no llegó, responde `RETRY` con `PRICE_LIST_MISSING`.
+- Si el id ya existe, responde `ACCEPTED` sin cambios.
+- No revisa el documento repetido: dos tiendas sin conexión pueden registrar a la misma persona, y la central guarda los dos registros.
+
+**Auditoría**
+
+- `CUSTOMER_CREATED`, `CUSTOMER_UPDATED` y `CUSTOMER_DEACTIVATED`, con los valores que cambiaron.
+
+**Pendiente y límites**
+
+- Las ventas todavía no guardan `customer_id`: eso llega en el siguiente paso, donde se probará el precio por lista de cliente.
+- Duplicados entre tiendas: la central todavía no decide cuál registro prevalece; queda para una revisión posterior.
+- Sin pruebas (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.
