@@ -1349,15 +1349,15 @@ Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con v
 
 ### Orden de trabajo del 3A
 
-1. **Backend: cajas y métodos de pago** (central, replicados), menús y privilegios iniciales por rol.
-2. **Backend: sesiones de caja y movimientos** (tienda).
-3. **Backend: ventas** (cálculo de totales en el dominio, cotización, venta en espera, cobro con idempotencia, autorización de descuento, datos del ticket).
-4. **Backend: subida de sesiones y ventas** a la central por la cola y consulta en la central.
-5. **Frontend: componente de pasos** reutilizable con campos obligatorios por paso; cajas y métodos de pago; producto en pasos.
-6. **Frontend: caja** (abrir, movimientos, cerrar con arqueo).
-7. **Frontend: punto de venta** (pantalla de venta, cobro por pasos, ticket, ventas en espera).
-8. **Frontend: consulta de ventas y sesiones** en tienda y central.
-9. **Cierre:** README, colección de Hoppscotch y revisión de criterios.
+1. **Backend: cajas y métodos de pago** (central, replicados), menús y privilegios iniciales por rol. (hecho)
+2. **Backend: sesiones de caja y movimientos** (tienda). (hecho)
+3. **Backend: ventas** (cálculo de totales en el dominio, cotización, venta en espera, cobro con idempotencia, autorización de descuento, datos del ticket). (hecho)
+4. **Backend: subida de sesiones y ventas** a la central por la cola y consulta en la central. (hecho)
+5. **Frontend: componente de pasos** reutilizable con campos obligatorios por paso; cajas y métodos de pago; producto en pasos. (hecho)
+6. **Frontend: caja** (abrir, movimientos, cerrar con arqueo). (hecho)
+7. **Frontend: punto de venta** (pantalla de venta, cobro por pasos, ticket, ventas en espera). (hecho)
+8. **Frontend: consulta de ventas y sesiones** en tienda y central. (hecho)
+9. **Cierre:** README, colección de Hoppscotch y revisión de criterios. (hecho)
 
 ### Criterios de aceptación del 3A
 
@@ -1372,6 +1372,17 @@ Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con v
 - [ ] El cierre de caja muestra esperado, contado y diferencia por método de pago.
 - [ ] Con la tienda 1 sin internet se sigue vendiendo; al volver, las ventas suben y aparecen en la central.
 - [ ] Los formularios de pasos marcan los obligatorios y no dejan avanzar sin ellos.
+
+### Estado del 3A (25 de noviembre de 2026)
+
+Los nueve pasos están programados y compilan en el CI (backend PRs #20 a #23, frontend PRs #12 a #15). Los criterios de aceptación quedan sin marcar hasta que el responsable los verifique en el entorno local.
+
+Pendientes menores conocidos:
+
+- La lista de ventas no muestra cuándo llegó cada venta a la central ni el resumen de pagos (el detalle sí): falta agregar `syncedAt` y los pagos a `SaleSummaryView`.
+- El ticket muestra la etiqueta fija "RTN"; debe tomar `tax_id_label` del país.
+- La consulta de una venta o sesión por id no se limita todavía al cajero que la hizo (los listados sí).
+- El cierre de caja no valida los códigos de método de pago contados.
 
 ## Decisiones y preguntas abiertas
 
