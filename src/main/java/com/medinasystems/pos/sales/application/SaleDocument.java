@@ -77,13 +77,15 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
     /** One payment of the sale. The card number is never here: only its last four digits. */
     public record PaymentDocument(long id, long paymentMethodId, BigDecimal amount, BigDecimal amountReceived,
                                   String reference, String cardLast4, String paidAt, String createdAt,
-                                  String createdBy, String updatedAt, String updatedBy, Integer version) {
+                                  String createdBy, String updatedAt, String updatedBy, Integer version,
+                                  Long creditNoteId, String redemptionKey) {
 
         static PaymentDocument of(Payment payment) {
             return new PaymentDocument(payment.getId(), payment.getPaymentMethod().getId(), payment.getAmount(),
                     payment.getAmountReceived(), payment.getReference(), payment.getCardLast4(),
                     text(payment.getPaidAt()), text(payment.getCreatedAt()), payment.getCreatedBy(),
-                    text(payment.getUpdatedAt()), payment.getUpdatedBy(), payment.getVersion());
+                    text(payment.getUpdatedAt()), payment.getUpdatedBy(), payment.getVersion(),
+                    payment.getCreditNoteId(), payment.getRedemptionKey());
         }
     }
 

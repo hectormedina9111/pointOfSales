@@ -42,6 +42,14 @@ public class Payment extends AuditableEntity {
     @Column(name = "paid_at", nullable = false)
     private Instant paidAt;
 
+    /** Credit note paid with, for the method CREDIT_NOTE. No foreign key: see V19. */
+    @Column(name = "credit_note_id")
+    private Long creditNoteId;
+
+    /** Idempotency key of the redemption that took the amount from the note. */
+    @Column(name = "redemption_key", length = 100)
+    private String redemptionKey;
+
     protected Payment() {
     }
 
@@ -53,6 +61,8 @@ public class Payment extends AuditableEntity {
         this.reference = draft.reference();
         this.cardLast4 = draft.cardLast4();
         this.paidAt = paidAt;
+        this.creditNoteId = draft.creditNoteId();
+        this.redemptionKey = draft.redemptionKey();
     }
 
     public PaymentMethod getPaymentMethod() {
@@ -77,5 +87,13 @@ public class Payment extends AuditableEntity {
 
     public Instant getPaidAt() {
         return paidAt;
+    }
+
+    public Long getCreditNoteId() {
+        return creditNoteId;
+    }
+
+    public String getRedemptionKey() {
+        return redemptionKey;
     }
 }

@@ -20,6 +20,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -64,20 +66,25 @@ public class SaleUploadHandler implements UploadHandler {
     private static final String RETURN = "RETURN";
 
     private static final String PAYMENT_COLUMNS = "id, sale_id, payment_method_id, amount, amount_received, reference,"
-            + " card_last4, paid_at, created_at, created_by, updated_at, updated_by, version";
+            + " card_last4, paid_at, created_at, created_by, updated_at, updated_by, version, credit_note_id,"
+            + " redemption_key";
+
+    private static final Logger log = LoggerFactory.getLogger(SaleUploadHandler.class);
 
     private final JdbcTemplate jdbc;
     private final CashSessionDirectory sessions;
     private final CustomerDirectory customers;
     private final StoreIdRanges ranges;
+    private final CreditNoteRedemptionService redemptions;
     private final Clock clock;
 
     public SaleUploadHandler(JdbcTemplate jdbc, CashSessionDirectory sessions, CustomerDirectory customers,
-                             StoreIdRanges ranges, Clock clock) {
+                             StoreIdRanges ranges, CreditNoteRedemptionService redemptions, Clock clock) {
         this.jdbc = jdbc;
         this.sessions = sessions;
         this.customers = customers;
         this.ranges = ranges;
+        this.redemptions = redemptions;
         this.clock = clock;
     }
 
@@ -142,10 +149,11 @@ public class SaleUploadHandler implements UploadHandler {
         for (Object[] line : lines) {
             jdbc.update(lineSql, line);
         }
-        String paymentSql = "INSERT INTO payment (" + PAYMENT_COLUMNS + ") VALUES (" + placeholders(13) + ")";
+        String paymentSql = "INSERT INTO payment (" + PAYMENT_COLUMNS + ") VALUES (" + placeholders(15) + ")";
         for (Object[] payment : payments) {
             jdbc.update(paymentSql, payment);
         }
+        confirmRedemptions(id, storeNodeId, payload);
         if (isReturn) {
             JsonNode note = creditNoteOf(payload);
             if (note != null) {
@@ -155,6 +163,20 @@ public class SaleUploadHandler implements UploadHandler {
             applyReturn(payload, receivedAt);
         }
         return UploadOutcome.accepted();
+    }
+
+    /**
+     * Each credit note payment of the sale confirms its redemption. A redemption missing on this node, or released, does not
+     * stop the sale: the central node does not revalidate, so it only notes it in the log.
+     */
+    private void confirmRedemptions(long saleId, long storeNodeId, JsonNode payload) {
+        for (JsonNode payment : array(payload, "payments")) {
+            String redemptionKey = optionalText(payment, "redemptionKey");
+            if (redemptionKey != null && !redemptions.confirm(redemptionKey, storeNodeId, saleId)) {
+                log.warn("Credit note redemption of sale {} from store node {} is missing or released", saleId,
+                        storeNodeId);
+            }
+        }
     }
 
     /**
@@ -347,7 +369,7 @@ public class SaleUploadHandler implements UploadHandler {
         return rows;
     }
 
-    /** The 13 values of PAYMENT_COLUMNS for each payment. */
+    /** The 15 values of PAYMENT_COLUMNS for each payment. */
     private static List<Object[]> paymentRows(long saleId, JsonNode payments) {
         List<Object[]> rows = new ArrayList<>(payments.size());
         for (JsonNode p : payments) {
@@ -364,7 +386,9 @@ public class SaleUploadHandler implements UploadHandler {
                 text(p, "createdBy"),
                 timestamp(instant(p, "updatedAt")),
                 text(p, "updatedBy"),
-                intField(p, "version")
+                intField(p, "version"),
+                optionalLong(p, "creditNoteId"),
+                optionalText(p, "redemptionKey")
             });
         }
         return rows;

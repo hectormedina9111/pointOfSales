@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 
 import com.medinasystems.pos.shared.AuditableEntity;
+import com.medinasystems.pos.shared.BusinessRuleException;
 
 /**
  * A credit note: a balance owed to the customer, issued by a return that was not made on the day of the sale. It is a
@@ -60,6 +61,30 @@ public class CreditNote extends AuditableEntity {
         this.amount = Money.scale2(amount);
         this.balance = this.amount;
         this.issuedAt = issuedAt;
+    }
+
+    /**
+     * Takes an amount from the balance for a payment. A note that is used up, or whose balance is less than the amount,
+     * cannot pay it. The note becomes USED when its balance reaches zero.
+     *
+     * @throws BusinessRuleException CREDIT_NOTE_INSUFFICIENT_BALANCE
+     */
+    public void spend(BigDecimal value) {
+        BigDecimal amountToSpend = Money.scale2(value);
+        if (status == CreditNoteStatus.USED || balance.compareTo(amountToSpend) < 0) {
+            throw new BusinessRuleException("CREDIT_NOTE_INSUFFICIENT_BALANCE",
+                    "The credit note does not have enough balance");
+        }
+        this.balance = Money.scale2(balance.subtract(amountToSpend));
+        if (balance.signum() == 0) {
+            this.status = CreditNoteStatus.USED;
+        }
+    }
+
+    /** Gives back an amount that a failed payment had taken. The note is active again. */
+    public void restore(BigDecimal value) {
+        this.balance = Money.scale2(balance.add(Money.scale2(value)));
+        this.status = CreditNoteStatus.ACTIVE;
     }
 
     public String getNumber() {
