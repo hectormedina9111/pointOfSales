@@ -42,6 +42,13 @@ public final class RefundRules {
         if (!given) {
             throw new BusinessRuleException("REFUNDS_REQUIRED", "The return needs at least one refund");
         }
+        for (PaymentDraft refund : refunds) {
+            // A credit note is paid with a balance, never given back: refunds are cash or the original method.
+            if (PaymentRules.CREDIT_NOTE.equals(refund.method().getCode())) {
+                throw new BusinessRuleException("REFUND_METHOD_NOT_ALLOWED",
+                        "A return cannot be refunded with a credit note");
+            }
+        }
 
         // The method, the amount and the reference follow the payment rules; the sum is checked against the total below.
         BigDecimal refundSum = Money.ZERO;

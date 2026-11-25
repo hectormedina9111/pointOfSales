@@ -28,9 +28,12 @@ public final class SaleData {
                         OrderType orderType, Authorization authorization, String notes) {
     }
 
-    /** One payment: the method by its code, the amount applied, and what the card or the cash needs. */
+    /**
+     * One payment: the method by its code, the amount applied, and what the card or the cash needs. A credit note payment
+     * names its note in {@code creditNoteNumber}.
+     */
     public record PaymentLine(String paymentMethodCode, BigDecimal amount, BigDecimal amountReceived, String reference,
-                              String cardLast4) {
+                              String cardLast4, String creditNoteNumber) {
     }
 
     /** Credentials of the manager who authorizes a discount or a price change. The password is never printed. */

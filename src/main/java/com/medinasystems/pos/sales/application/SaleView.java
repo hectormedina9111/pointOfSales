@@ -3,6 +3,7 @@ package com.medinasystems.pos.sales.application;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import com.medinasystems.pos.customer.CustomerInfo;
@@ -36,7 +37,8 @@ public record SaleView(Long id, Long internalNumber, String receiptNumber, SaleT
     public record CreditNoteRef(Long id, String number, BigDecimal amount, BigDecimal balance) {
     }
 
-    public static SaleView from(Sale sale, CustomerInfo customer, List<ReturnRef> returns, CreditNoteRef creditNote) {
+    public static SaleView from(Sale sale, CustomerInfo customer, List<ReturnRef> returns, CreditNoteRef creditNote,
+                                Map<Long, String> creditNoteNumbers) {
         Objects.requireNonNull(customer, "the customer of the sale is required");
         return new SaleView(sale.getId(), sale.getInternalNumber(), sale.getReceiptNumber(), sale.getType(),
                 sale.getDocumentType(), sale.getStatus(), sale.getBranchId(), sale.getCashRegisterId(),
@@ -48,6 +50,6 @@ public record SaleView(Long id, Long internalNumber, String receiptNumber, SaleT
                 sale.getOriginalSaleId(), sale.getOriginalReceiptNumber(), sale.getReason(), sale.getRefundMethod(),
                 returns, creditNote,
                 sale.getLines().stream().map(line -> SaleLineView.from(line)).toList(),
-                sale.getPayments().stream().map(payment -> PaymentView.from(payment)).toList());
+                sale.getPayments().stream().map(payment -> PaymentView.from(payment, creditNoteNumbers)).toList());
     }
 }

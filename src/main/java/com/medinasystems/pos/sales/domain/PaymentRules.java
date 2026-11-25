@@ -1,16 +1,22 @@
 package com.medinasystems.pos.sales.domain;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.medinasystems.pos.shared.BusinessRuleException;
 
 /**
  * Checks the payments of a sale against its total. The payments must add up to the total exactly, and each one must
  * follow its method: an active method, a reference when the method asks for one, an amount received only when the
- * method gives change, and at most a card's last four digits.
+ * method gives change, and at most a card's last four digits. A credit note payment names its note, and each note
+ * pays at most once in the same sale.
  */
 public final class PaymentRules {
+
+    /** Code of the method that pays with the balance of a credit note. */
+    public static final String CREDIT_NOTE = "CREDIT_NOTE";
 
     private PaymentRules() {
     }
@@ -20,7 +26,8 @@ public final class PaymentRules {
      *         amount
      * @throws BusinessRuleException PAYMENTS_REQUIRED, PAYMENT_METHOD_INACTIVE, INVALID_PAYMENT_AMOUNT,
      *                               PAYMENT_REFERENCE_REQUIRED, AMOUNT_RECEIVED_NOT_ALLOWED, AMOUNT_RECEIVED_TOO_LOW,
-     *                               INVALID_CARD_LAST4 or PAYMENTS_DO_NOT_MATCH_TOTAL
+     *                               INVALID_CARD_LAST4, CREDIT_NOTE_NUMBER_REQUIRED, DUPLICATE_CREDIT_NOTE_PAYMENT or
+     *                               PAYMENTS_DO_NOT_MATCH_TOTAL
      */
     public static BigDecimal check(BigDecimal total, List<PaymentDraft> payments) {
         if (payments == null || payments.isEmpty()) {
@@ -28,6 +35,7 @@ public final class PaymentRules {
         }
         BigDecimal paid = Money.ZERO;
         BigDecimal change = Money.ZERO;
+        Set<String> creditNotes = new HashSet<>();
         for (PaymentDraft payment : payments) {
             PaymentMethod method = payment.method();
             if (!method.isActive()) {
@@ -52,6 +60,15 @@ public final class PaymentRules {
             }
             if (payment.cardLast4() != null && !payment.cardLast4().matches("[0-9]{4}")) {
                 throw new BusinessRuleException("INVALID_CARD_LAST4", "The card must have exactly four digits");
+            }
+            if (CREDIT_NOTE.equals(method.getCode())) {
+                if (payment.creditNoteNumber() == null) {
+                    throw new BusinessRuleException("CREDIT_NOTE_NUMBER_REQUIRED", "Enter the credit note number");
+                }
+                if (!creditNotes.add(payment.creditNoteNumber())) {
+                    throw new BusinessRuleException("DUPLICATE_CREDIT_NOTE_PAYMENT",
+                            "The same credit note cannot pay twice in one sale");
+                }
             }
             paid = paid.add(payment.amount());
         }
