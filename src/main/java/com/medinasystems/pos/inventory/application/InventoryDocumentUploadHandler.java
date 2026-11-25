@@ -6,7 +6,6 @@ import static com.medinasystems.pos.sync.UploadPayload.instant;
 import static com.medinasystems.pos.sync.UploadPayload.intField;
 import static com.medinasystems.pos.sync.UploadPayload.longField;
 import static com.medinasystems.pos.sync.UploadPayload.optionalDecimal;
-import static com.medinasystems.pos.sync.UploadPayload.optionalLong;
 import static com.medinasystems.pos.sync.UploadPayload.optionalText;
 import static com.medinasystems.pos.sync.UploadPayload.text;
 
@@ -22,8 +21,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 import com.medinasystems.pos.catalog.SaleableProducts;
-import com.medinasystems.pos.inventory.StockMovementType;
 import com.medinasystems.pos.inventory.StockReferenceType;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Item;
+import com.medinasystems.pos.inventory.application.InventoryUploadWriter.Movement;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.security.UserDirectory;
@@ -40,8 +40,7 @@ import tools.jackson.databind.JsonNode;
  * checks completeness, the branch and the duplicates; it does not revalidate the stock. A product, branch or user that has
  * not arrived yet gets RETRY, and nothing is written.
  *
- * <p>The stock row of a product in a branch is written only when the uploaded movement is newer than the stored one, so
- * an older document that arrives late does not overwrite a newer stock.
+ * <p>The movements and the stock rows are written by {@link InventoryUploadWriter}, shared with the sales movements.
  */
 @Component
 @Profile("central")
@@ -53,36 +52,24 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
     private static final String LINE_SQL = "INSERT INTO inventory_document_line (id, document_id, product_id, quantity,"
             + " counted_quantity, previous_quantity, unit_cost, created_at, created_by, updated_at, updated_by, version)"
             + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    private static final String MOVEMENT_SQL = "INSERT INTO inventory_movement (id, branch_id, product_id, type, quantity,"
-            + " resulting_balance, unit_cost, resulting_average_cost, reference_type, reference_id, moved_at, user_id,"
-            + " created_at, created_by, updated_at, updated_by, version)"
-            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    private static final String ITEM_SQL = "INSERT INTO inventory_item (product_id, branch_id, quantity, average_cost,"
-            + " product_sku, product_name, category_id, min_stock, last_movement_at, created_at, created_by, updated_at,"
-            + " updated_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)"
-            + " ON CONFLICT (product_id, branch_id) DO UPDATE SET quantity = EXCLUDED.quantity,"
-            + " average_cost = EXCLUDED.average_cost, product_sku = EXCLUDED.product_sku,"
-            + " product_name = EXCLUDED.product_name, category_id = EXCLUDED.category_id,"
-            + " min_stock = EXCLUDED.min_stock, last_movement_at = EXCLUDED.last_movement_at,"
-            + " updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by,"
-            + " version = inventory_item.version + 1"
-            + " WHERE inventory_item.last_movement_at IS NULL"
-            + " OR inventory_item.last_movement_at < EXCLUDED.last_movement_at";
 
     private final JdbcTemplate jdbc;
     private final StoreIdRanges ranges;
     private final BranchDirectory branches;
     private final UserDirectory users;
     private final SaleableProducts products;
+    private final InventoryUploadWriter writer;
     private final Clock clock;
 
     public InventoryDocumentUploadHandler(JdbcTemplate jdbc, StoreIdRanges ranges, BranchDirectory branches,
-                                          UserDirectory users, SaleableProducts products, Clock clock) {
+                                          UserDirectory users, SaleableProducts products,
+                                          InventoryUploadWriter writer, Clock clock) {
         this.jdbc = jdbc;
         this.ranges = ranges;
         this.branches = branches;
         this.users = users;
         this.products = products;
+        this.writer = writer;
         this.clock = clock;
     }
 
@@ -109,14 +96,14 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
         // The store sends an item again when it has not seen the answer: a document that is already here is applied.
-        if (exists("SELECT COUNT(*) FROM inventory_document WHERE id = ?", upload.id())) {
+        if (writer.exists("SELECT COUNT(*) FROM inventory_document WHERE id = ?", upload.id())) {
             return UploadOutcome.accepted();
         }
-        if (exists("SELECT COUNT(*) FROM inventory_document WHERE number = ?", upload.number())) {
+        if (writer.exists("SELECT COUNT(*) FROM inventory_document WHERE number = ?", upload.number())) {
             return UploadOutcome.rejected("DUPLICATE_DOCUMENT_NUMBER");
         }
-        if (upload.idempotencyKey() != null
-                && exists("SELECT COUNT(*) FROM inventory_document WHERE idempotency_key = ?", upload.idempotencyKey())) {
+        if (upload.idempotencyKey() != null && writer.exists(
+                "SELECT COUNT(*) FROM inventory_document WHERE idempotency_key = ?", upload.idempotencyKey())) {
             return UploadOutcome.rejected("DUPLICATE_IDEMPOTENCY_KEY");
         }
         if (!branches.exists(upload.branchId())) {
@@ -145,18 +132,8 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                     line.previousQuantity(), line.unitCost(), received, upload.createdBy(), received,
                     upload.updatedBy(), 0);
         }
-        for (Movement movement : upload.movements()) {
-            jdbc.update(MOVEMENT_SQL, movement.id(), upload.branchId(), movement.productId(), movement.type().name(),
-                    movement.quantity(), movement.resultingBalance(), movement.unitCost(),
-                    movement.resultingAverageCost(), movement.referenceType().name(), movement.referenceId(),
-                    Timestamp.from(movement.movedAt()), movement.userId(), received, upload.createdBy(), received,
-                    upload.updatedBy(), 0);
-        }
-        for (Item item : upload.items()) {
-            jdbc.update(ITEM_SQL, item.productId(), upload.branchId(), item.quantity(), item.averageCost(), item.sku(),
-                    item.name(), item.categoryId(), item.minStock(), Timestamp.from(item.lastMovementAt()), received,
-                    upload.createdBy(), received, upload.updatedBy());
-        }
+        writer.writeMovements(upload.branchId(), upload.movements(), upload.createdBy(), upload.updatedBy(), receivedAt);
+        writer.writeItems(upload.branchId(), upload.items(), upload.createdBy(), upload.updatedBy(), receivedAt);
     }
 
     private boolean idsInRange(long storeNodeId, Upload upload) {
@@ -183,25 +160,9 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                         && movement.referenceId() == upload.id());
     }
 
-    private boolean exists(String sql, Object argument) {
-        Long count = jdbc.queryForObject(sql, Long.class, argument);
-        return count != null && count > 0;
-    }
-
     /** A line of the document, read from the payload. */
     private record Line(long id, long productId, BigDecimal quantity, BigDecimal countedQuantity,
                         BigDecimal previousQuantity, BigDecimal unitCost) {
-    }
-
-    /** A movement of the document, read from the payload. */
-    private record Movement(long id, long productId, StockMovementType type, BigDecimal quantity,
-                            BigDecimal resultingBalance, BigDecimal unitCost, BigDecimal resultingAverageCost,
-                            StockReferenceType referenceType, long referenceId, Instant movedAt, long userId) {
-    }
-
-    /** The stock row of a product after the document, read from the payload. */
-    private record Item(long productId, BigDecimal quantity, BigDecimal averageCost, String sku, String name,
-                        Long categoryId, BigDecimal minStock, Instant lastMovementAt) {
     }
 
     /** Every field of an INVENTORY_DOCUMENT payload, read and checked before anything is written. */
@@ -217,27 +178,14 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                         decimal(node, "quantity"), optionalDecimal(node, "countedQuantity"),
                         decimal(node, "previousQuantity"), optionalDecimal(node, "unitCost")));
             }
-            List<Movement> movements = new ArrayList<>();
-            for (JsonNode node : array(payload, "movements")) {
-                movements.add(new Movement(longField(node, "id"), longField(node, "productId"),
-                        enumField(node, "type", StockMovementType.class), decimal(node, "quantity"),
-                        decimal(node, "resultingBalance"), decimal(node, "unitCost"),
-                        decimal(node, "resultingAverageCost"), enumField(node, "referenceType",
-                        StockReferenceType.class), longField(node, "referenceId"), instant(node, "movedAt"),
-                        longField(node, "userId")));
-            }
-            List<Item> items = new ArrayList<>();
-            for (JsonNode node : array(payload, "items")) {
-                items.add(new Item(longField(node, "productId"), decimal(node, "quantity"),
-                        decimal(node, "averageCost"), text(node, "productSku"), text(node, "productName"),
-                        optionalLong(node, "categoryId"), decimal(node, "minStock"), instant(node, "lastMovementAt")));
-            }
+            List<Movement> movements = InventoryUploadWriter.movementsFrom(payload);
+            List<Item> items = InventoryUploadWriter.itemsFrom(payload);
             if (lines.isEmpty() || movements.isEmpty()) {
                 throw new InvalidPayloadException("lines");
             }
             return new Upload(longField(payload, "id"), text(payload, "number"),
-                    enumField(payload, "type", InventoryDocumentType.class), longField(payload, "branchId"),
-                    optionalText(payload, "reason"), optionalText(payload, "notes"),
+                    InventoryUploadWriter.enumField(payload, "type", InventoryDocumentType.class),
+                    longField(payload, "branchId"), optionalText(payload, "reason"), optionalText(payload, "notes"),
                     optionalText(payload, "idempotencyKey"), instant(payload, "postedAt"),
                     longField(payload, "userId"), instant(payload, "createdAt"), text(payload, "createdBy"),
                     instant(payload, "updatedAt"), text(payload, "updatedBy"), intField(payload, "version"),
@@ -251,15 +199,6 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
             movements.forEach(movement -> ids.add(movement.productId()));
             items.forEach(item -> ids.add(item.productId()));
             return ids.stream().distinct().toList();
-        }
-
-        private static <E extends Enum<E>> E enumField(JsonNode payload, String name, Class<E> type) {
-            String value = text(payload, name);
-            try {
-                return Enum.valueOf(type, value);
-            } catch (IllegalArgumentException ex) {
-                throw new InvalidPayloadException(name);
-            }
         }
     }
 }
