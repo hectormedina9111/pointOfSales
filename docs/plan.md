@@ -2391,3 +2391,39 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 - Los seriales de un mismo producto que devuelven dos tiendas a la vez pueden pasar la validación local en ambas: la central solo marca las filas como devueltas, sin reservar seriales (las reservas de la devolución son por cantidad). Pendiente revisarlo con las reservas por serial.
 - Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → ventas sin ciclo) y el CI quedan para verificar.
 
+
+### Decisiones de implementación: inventario paso 4 (transferencias)
+
+**Migración V23.** `inventory_transfer` (número `TR-{código de origen}-{000001}`, estado `IN_TRANSIT`, `RECEIVED` o `RECEIVED_WITH_DIFFERENCES`, claves de idempotencia del envío y de la recepción), `inventory_transfer_line` (cantidad enviada, cantidad recibida, costo promedio del origen) e `inventory_transfer_line_serial` (serial enviado y si la destino lo recibió). El contador de números es el de documentos de inventario con un tipo nuevo, `TRANSFER`, por sucursal de origen; el `CHECK` del contador se amplía en la misma migración. Las tres tablas tienen disparadores `sync_log_change(..., 'main')` y están en `SyncTables` como entidades principales, en su propio rango de ids.
+
+**Envío (origen).** Lo hace el nodo que opera la sucursal de origen: la tienda para la suya; la central para las que ninguna tienda atiende (`originBranchId` es obligatorio solo en la central). Reglas: destino activo y distinto (`TRANSFER_SAME_BRANCH`, `TRANSFER_BRANCH_INACTIVE`), al menos una línea, una por producto, cantidad mayor que cero. Cada línea pasa por `StockLedger` como `TRANSFER_OUT` al costo promedio vigente, que se guarda en la línea. Los seriales pasan a `IN_TRANSIT` y conservan la sucursal de origen. Si el nodo es tienda, el envío sube en `INVENTORY_TRANSFER_SENT` en la misma transacción.
+
+**Central al recibir un envío.** `TransferSentUploadHandler` exige que el origen sea la sucursal de la tienda, que los ids estén en el rango de la tienda y que los movimientos sean `TRANSFER_OUT` de esa transferencia. Si el id ya existe, acepta (reenvío). Un número o una clave repetidos se rechazan. Inserta la transferencia, sus líneas y seriales con los ids de la tienda, y aplica los movimientos, las existencias y los seriales con `InventoryUploadWriter`. Sus disparadores replican la transferencia a todas las tiendas.
+
+**Recepción (destino).** La recibe el nodo que opera la sucursal de destino (`TRANSFER_WRONG_BRANCH` si no). Exige estado `IN_TRANSIT` (`TRANSFER_NOT_IN_TRANSIT`), con la misma clave repetida responde la transferencia sin recibir nada. Debe responder cada línea una sola vez (`TRANSFER_LINE_NOT_FOUND`, `TRANSFER_LINES_MISSING`). Cantidad entre cero y lo enviado (`RECEIVED_EXCEEDS_SENT`). En productos con seriales: los recibidos son un subconjunto de los enviados (`SERIAL_NOT_IN_TRANSFER`) y su número coincide con la cantidad. En productos sin seriales no se envían seriales (`SERIAL_NOT_EXPECTED`). Cada línea con cantidad recibida aplica `TRANSFER_IN` al costo con el que salió, que sí actualiza el promedio de la destino. El estado final es `RECEIVED` si todo llegó y `RECEIVED_WITH_DIFFERENCES` si no. En tienda, la recepción sube en `INVENTORY_TRANSFER_RECEIVED`.
+
+**Central al recibir una recepción.** `TransferReceivedUploadHandler` exige que la transferencia exista (si no, `RETRY`: el envío aún no llega), que la destino sea la de la tienda, que la transferencia siga en tránsito o que la clave ya sea la de esta recepción, y que las líneas y seriales pertenezcan a la transferencia. Actualiza la transferencia, sus líneas y los indicadores de cada serial; aplica las entradas de la destino; los seriales recibidos pasan a la destino (`AVAILABLE`) con el mismo criterio de versión que el resto de seriales. Los no recibidos quedan `IN_TRANSIT` en la central. Los cambios se replican a todas las tiendas, incluida la de origen.
+
+**Réplica sin movimientos.** La réplica escribe filas con `session_replication_role = replica`, así que una transferencia que llega a una tienda no genera movimientos ni eventos.
+
+**API y privilegios.**
+
+| Método y ruta | Privilegio |
+| --- | --- |
+| `POST /api/v1/inventory/transfers` | `POST_INVENTORY_TRANSFERS` |
+| `POST /api/v1/inventory/transfers/{id}/receipt` | `POST_INVENTORY_TRANSFERS_ID_RECEIPT` |
+| `GET /api/v1/inventory/transfers` (`direction`, `branchId`, `status`, `search`, `from`, `to`, paginado en la base de datos) | `GET_INVENTORY_TRANSFERS` |
+| `GET /api/v1/inventory/transfers/{id}` | `GET_INVENTORY_TRANSFERS_ID` |
+| `GET /api/v1/inventory/transfer-branches` | `GET_INVENTORY_TRANSFER_BRANCHES` |
+
+El bodeguero recibe estos privilegios y el menú `MENU_INVENTORY_TRANSFERS` ("Transferencias"); el jefe los hereda. La lista de una tienda muestra las transferencias donde participa su sucursal; sin `direction`, ambos sentidos. El detalle responde 404 si la sucursal de la tienda no participa. La referencia de los movimientos `TRANSFER` muestra el número de la transferencia.
+
+**Desviaciones y límites.**
+
+- La lista devuelve un resumen sin líneas (`TransferSummaryView`); el detalle trae las líneas y los seriales.
+- `product_serial` no se replica. La tienda de origen conserva sus seriales en `IN_TRANSIT` aunque la destino los haya recibido; la situación consolidada está en la central.
+- En la destino, `TRANSFER_IN` acepta un serial que el nodo tiene como `IN_TRANSIT` (volvió a su sucursal). En el resto de entradas, `IN_TRANSIT` sigue bloqueando (`SERIAL_ALREADY_EXISTS`).
+- Un producto desactivado después del envío no se puede recibir (`PRODUCT_INACTIVE`), igual que no se puede vender. Revisar con el responsable si una recepción debería permitirlo.
+- Los códigos de la central (`DUPLICATE_TRANSFER_NUMBER`, `BRANCH_MISMATCH`, `TRANSFER_MISSING` y los demás de las subidas) no llegan a la persona: van en el recibo del outbox y no tienen texto en los archivos de mensajes.
+- Una recarga de la foto inicial borra las transferencias locales de la tienda que aún no subieron (igual que los créditos). Pendiente para antes del piloto.
+- Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → ventas y organización sin ciclos) y el CI quedan para verificar.
