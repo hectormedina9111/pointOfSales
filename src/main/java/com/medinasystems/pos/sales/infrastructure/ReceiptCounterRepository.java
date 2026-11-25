@@ -12,23 +12,26 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.medinasystems.pos.sales.domain.ReceiptCounter;
+import com.medinasystems.pos.sales.domain.ReceiptCounterKey;
 
-public interface ReceiptCounterRepository extends JpaRepository<ReceiptCounter, Long> {
+public interface ReceiptCounterRepository extends JpaRepository<ReceiptCounter, ReceiptCounterKey> {
 
     /**
-     * Creates the counter of a register when it does not exist yet. ON CONFLICT DO NOTHING makes it safe when two charges
-     * race: the second insert waits for the first transaction and then does nothing. Returns the rows inserted (0 or 1).
+     * Creates the counter of a register and document type when it does not exist yet. ON CONFLICT DO NOTHING makes it safe
+     * when two documents race: the second insert waits for the first transaction and then does nothing. Returns the rows
+     * inserted (0 or 1).
      */
     @Modifying(flushAutomatically = true)
-    @Query(value = "INSERT INTO cash_register_counter (cash_register_id, last_number, created_at, created_by,"
-            + " updated_at, updated_by, version)"
-            + " VALUES (:cashRegisterId, 0, :now, :by, :now, :by, 0)"
-            + " ON CONFLICT (cash_register_id) DO NOTHING", nativeQuery = true)
-    int insertIfAbsent(@Param("cashRegisterId") long cashRegisterId, @Param("now") Instant now,
-                       @Param("by") String by);
+    @Query(value = "INSERT INTO cash_register_counter (cash_register_id, document_type, last_number, created_at,"
+            + " created_by, updated_at, updated_by, version)"
+            + " VALUES (:cashRegisterId, :documentType, 0, :now, :by, :now, :by, 0)"
+            + " ON CONFLICT (cash_register_id, document_type) DO NOTHING", nativeQuery = true)
+    int insertIfAbsent(@Param("cashRegisterId") long cashRegisterId, @Param("documentType") String documentType,
+                       @Param("now") Instant now, @Param("by") String by);
 
-    /** The counter of a register, locked until the end of the transaction (SELECT ... FOR UPDATE). */
+    /** The counter of a register and document type, locked until the end of the transaction (SELECT ... FOR UPDATE). */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select c from ReceiptCounter c where c.cashRegisterId = :cashRegisterId")
-    Optional<ReceiptCounter> findForUpdate(@Param("cashRegisterId") Long cashRegisterId);
+    @Query("select c from ReceiptCounter c where c.cashRegisterId = :cashRegisterId and c.documentType = :documentType")
+    Optional<ReceiptCounter> findForUpdate(@Param("cashRegisterId") Long cashRegisterId,
+                                           @Param("documentType") String documentType);
 }

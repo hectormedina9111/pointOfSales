@@ -37,6 +37,9 @@ public final class SaleSpecifications {
             if (filter.status() != null) {
                 predicates.add(cb.equal(root.get("status"), filter.status()));
             }
+            if (filter.type() != null) {
+                predicates.add(cb.equal(root.get("type"), filter.type()));
+            }
             if (filter.orderType() != null) {
                 predicates.add(cb.equal(root.get("orderType"), filter.orderType()));
             }

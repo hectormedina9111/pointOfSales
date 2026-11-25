@@ -11,12 +11,14 @@ import static com.medinasystems.pos.sync.UploadPayload.optionalLong;
 import static com.medinasystems.pos.sync.UploadPayload.optionalText;
 import static com.medinasystems.pos.sync.UploadPayload.text;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -48,12 +50,18 @@ public class SaleUploadHandler implements UploadHandler {
             + " cash_register_id, cash_session_id, cashier_id, customer_id, order_type, status, is_exclusive, subtotal,"
             + " discount_total, exempt_amount, taxable_amount_15, taxable_amount_18, tax_total, total, amount_paid,"
             + " change_due, paid_at, discount_type, discount_value, discount_authorized_by, price_authorized_by, notes,"
-            + " idempotency_key, fiscal_status, synced_at, created_at, created_by, updated_at, updated_by, version";
+            + " idempotency_key, fiscal_status, synced_at, created_at, created_by, updated_at, updated_by, version,"
+            + " original_sale_id, original_receipt_number, reason, refund_method, return_authorized_by";
 
     private static final String LINE_COLUMNS = "id, sale_id, line_number, product_id, sku, description, quantity,"
             + " unit_price, list_price, price_overridden, unit_cost, discount_type, discount_value, discount_amount,"
             + " tax_code, tax_rate, tax_amount, subtotal, total, price_list_id, created_at, created_by, updated_at,"
-            + " updated_by, version";
+            + " updated_by, version, original_line_id";
+
+    private static final String CREDIT_NOTE_COLUMNS = "id, number, customer_id, return_sale_id, branch_id, amount,"
+            + " balance, status, issued_at, synced_at, created_at, created_by, updated_at, updated_by, version";
+
+    private static final String RETURN = "RETURN";
 
     private static final String PAYMENT_COLUMNS = "id, sale_id, payment_method_id, amount, amount_received, reference,"
             + " card_last4, paid_at, created_at, created_by, updated_at, updated_by, version";
@@ -99,12 +107,15 @@ public class SaleUploadHandler implements UploadHandler {
         if (!idsInRange(storeNodeId, payload)) {
             return UploadOutcome.rejected("ID_OUT_OF_RANGE");
         }
+        boolean isReturn = RETURN.equals(text(payload, "type"));
         long cashSessionId = longField(payload, "cashSessionId");
         long customerId = longField(payload, "customerId");
-        Object[] sale = saleRow(payload, id, clock.instant());
+        Instant receivedAt = clock.instant();
+        Object[] sale = saleRow(payload, id, receivedAt);
         List<Object[]> lines = lineRows(id, array(payload, "lines"));
         List<Object[]> payments = paymentRows(id, array(payload, "payments"));
-        if (lines.isEmpty() || payments.isEmpty()) {
+        // A return refunded with a credit note has no payments: its refund is the note.
+        if (lines.isEmpty() || (payments.isEmpty() && !isReturn)) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
 
@@ -119,9 +130,15 @@ public class SaleUploadHandler implements UploadHandler {
         if (customers.find(customerId).isEmpty()) {
             return UploadOutcome.retry("CUSTOMER_MISSING");
         }
+        if (isReturn) {
+            UploadOutcome returnCheck = checkReturn(payload);
+            if (returnCheck != null) {
+                return returnCheck;
+            }
+        }
 
-        jdbc.update("INSERT INTO sale (" + SALE_COLUMNS + ") VALUES (" + placeholders(36) + ")", sale);
-        String lineSql = "INSERT INTO sale_line (" + LINE_COLUMNS + ") VALUES (" + placeholders(25) + ")";
+        jdbc.update("INSERT INTO sale (" + SALE_COLUMNS + ") VALUES (" + placeholders(41) + ")", sale);
+        String lineSql = "INSERT INTO sale_line (" + LINE_COLUMNS + ") VALUES (" + placeholders(26) + ")";
         for (Object[] line : lines) {
             jdbc.update(lineSql, line);
         }
@@ -129,7 +146,99 @@ public class SaleUploadHandler implements UploadHandler {
         for (Object[] payment : payments) {
             jdbc.update(paymentSql, payment);
         }
+        if (isReturn) {
+            JsonNode note = creditNoteOf(payload);
+            if (note != null) {
+                jdbc.update("INSERT INTO credit_note (" + CREDIT_NOTE_COLUMNS + ") VALUES (" + placeholders(15) + ")",
+                        creditNoteRow(note, receivedAt));
+            }
+            applyReturn(payload, receivedAt);
+        }
         return UploadOutcome.accepted();
+    }
+
+    /**
+     * A return needs its original sale and its original lines on this node, and each returned quantity must still fit in
+     * the original line. Only this integrity check is made: the business rules were checked by the store. Null when the
+     * return can be written.
+     */
+    private UploadOutcome checkReturn(JsonNode payload) {
+        Long originalSaleId = optionalLong(payload, "originalSaleId");
+        if (originalSaleId == null) {
+            return UploadOutcome.rejected("INVALID_PAYLOAD");
+        }
+        Long originals = jdbc.queryForObject("SELECT count(*) FROM sale WHERE id = ?", Long.class, originalSaleId);
+        if (originals == null || originals == 0) {
+            return UploadOutcome.retry("ORIGINAL_SALE_MISSING");
+        }
+        for (JsonNode line : array(payload, "lines")) {
+            Long originalLineId = optionalLong(line, "originalLineId");
+            if (originalLineId == null) {
+                return UploadOutcome.rejected("INVALID_PAYLOAD");
+            }
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT sale_id, quantity, returned_quantity FROM sale_line WHERE id = ?", originalLineId);
+            if (rows.isEmpty()) {
+                return UploadOutcome.retry("ORIGINAL_LINE_MISSING");
+            }
+            Map<String, Object> row = rows.get(0);
+            if (((Number) row.get("sale_id")).longValue() != originalSaleId) {
+                return UploadOutcome.rejected("INVALID_PAYLOAD");
+            }
+            BigDecimal quantity = (BigDecimal) row.get("quantity");
+            BigDecimal returned = (BigDecimal) row.get("returned_quantity");
+            if (returned.add(decimal(line, "quantity")).compareTo(quantity) > 0) {
+                return UploadOutcome.rejected("RETURN_QUANTITY_EXCEEDED");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Moves the returned quantities onto the original lines and sets the status of the original sale: RETURNED when every
+     * line is fully returned, PARTIALLY_RETURNED otherwise. Both are increments and derived values, so the order of the
+     * uploads does not matter as long as the original sale is already here.
+     */
+    private void applyReturn(JsonNode payload, Instant receivedAt) {
+        Timestamp now = Timestamp.from(receivedAt);
+        long originalSaleId = optionalLong(payload, "originalSaleId");
+        String by = text(payload, "createdBy");
+        for (JsonNode line : array(payload, "lines")) {
+            jdbc.update("UPDATE sale_line SET returned_quantity = returned_quantity + ?, updated_at = ?, updated_by = ?,"
+                    + " version = version + 1 WHERE id = ?", decimal(line, "quantity"), now, by,
+                    optionalLong(line, "originalLineId"));
+        }
+        jdbc.update("UPDATE sale SET status = CASE WHEN EXISTS (SELECT 1 FROM sale_line WHERE sale_id = ?"
+                + " AND returned_quantity < quantity) THEN 'PARTIALLY_RETURNED' ELSE 'RETURNED' END,"
+                + " updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?",
+                originalSaleId, now, by, originalSaleId);
+    }
+
+    /** The credit note of a return, or null when the return issued none. */
+    private static JsonNode creditNoteOf(JsonNode payload) {
+        JsonNode note = payload.get("creditNote");
+        return note == null || note.isNull() ? null : note;
+    }
+
+    /** The 15 values of CREDIT_NOTE_COLUMNS. */
+    private static Object[] creditNoteRow(JsonNode n, Instant receivedAt) {
+        return new Object[] {
+            longField(n, "id"),
+            text(n, "number"),
+            longField(n, "customerId"),
+            longField(n, "returnSaleId"),
+            longField(n, "branchId"),
+            decimal(n, "amount"),
+            decimal(n, "balance"),
+            text(n, "status"),
+            timestamp(instant(n, "issuedAt")),
+            Timestamp.from(receivedAt),
+            timestamp(instant(n, "createdAt")),
+            text(n, "createdBy"),
+            timestamp(instant(n, "updatedAt")),
+            text(n, "updatedBy"),
+            intField(n, "version")
+        };
     }
 
     /**
@@ -151,10 +260,11 @@ public class SaleUploadHandler implements UploadHandler {
                 return false;
             }
         }
-        return true;
+        JsonNode note = creditNoteOf(payload);
+        return note == null || ranges.contains(storeNodeId, longField(note, "id"));
     }
 
-    /** The 36 values of SALE_COLUMNS, in that order. synced_at is the moment the central node received the sale. */
+    /** The 41 values of SALE_COLUMNS, in that order. synced_at is the moment the central node received the sale. */
     private static Object[] saleRow(JsonNode p, long id, Instant receivedAt) {
         return new Object[] {
             id,
@@ -192,11 +302,16 @@ public class SaleUploadHandler implements UploadHandler {
             text(p, "createdBy"),
             timestamp(instant(p, "updatedAt")),
             text(p, "updatedBy"),
-            intField(p, "version")
+            intField(p, "version"),
+            optionalLong(p, "originalSaleId"),
+            optionalText(p, "originalReceiptNumber"),
+            optionalText(p, "reason"),
+            optionalText(p, "refundMethod"),
+            optionalLong(p, "returnAuthorizedBy")
         };
     }
 
-    /** The 25 values of LINE_COLUMNS for each line. */
+    /** The 26 values of LINE_COLUMNS for each line. */
     private static List<Object[]> lineRows(long saleId, JsonNode lines) {
         List<Object[]> rows = new ArrayList<>(lines.size());
         for (JsonNode l : lines) {
@@ -225,7 +340,8 @@ public class SaleUploadHandler implements UploadHandler {
                 text(l, "createdBy"),
                 timestamp(instant(l, "updatedAt")),
                 text(l, "updatedBy"),
-                intField(l, "version")
+                intField(l, "version"),
+                optionalLong(l, "originalLineId")
             });
         }
         return rows;

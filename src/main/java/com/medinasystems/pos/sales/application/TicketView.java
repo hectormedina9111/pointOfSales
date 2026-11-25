@@ -11,19 +11,24 @@ import com.medinasystems.pos.cash.CashRegisterInfo;
 import com.medinasystems.pos.customer.CustomerInfo;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.organization.CompanyInfo;
+import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.OrderType;
+import com.medinasystems.pos.sales.domain.RefundMethod;
 import com.medinasystems.pos.sales.domain.Sale;
+import com.medinasystems.pos.sales.domain.SaleType;
 import com.medinasystems.pos.security.UserInfo;
 
 /**
- * The data of a printed 80 mm ticket. The date and time are local to the company's time zone, which is named in
+ * The data of a printed 80 mm ticket, or of the return voucher (type RETURN) with its credit note when one was issued. The date and time are local to the company's time zone, which is named in
  * {@code timeZone}. The printing itself happens in the browser.
  */
 public record TicketView(TicketCompany company, TicketBranch branch, String cashRegisterName, String receiptNumber,
                          LocalDate date, LocalTime time, String timeZone, String cashierName, Long customerId,
                          String customerName, String customerDocumentType, String customerDocumentNumber,
                          OrderType orderType, List<TicketLine> lines, SaleTotalsView totals,
-                         List<PaymentView> payments, BigDecimal changeDue) {
+                         List<PaymentView> payments, BigDecimal changeDue, SaleType type,
+                         String originalReceiptNumber, String reason, RefundMethod refundMethod,
+                         String creditNoteNumber, BigDecimal creditNoteAmount) {
 
     public record TicketCompany(String legalName, String tradeName, String taxId) {
     }
@@ -37,7 +42,7 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
     }
 
     public static TicketView of(Sale sale, CompanyInfo company, BranchInfo branch, CashRegisterInfo register,
-                                UserInfo cashier, CustomerInfo customer, ZoneId zone) {
+                                UserInfo cashier, CustomerInfo customer, CreditNote creditNote, ZoneId zone) {
         var local = sale.getPaidAt().atZone(zone);
         return new TicketView(
                 new TicketCompany(company.legalName(), company.tradeName(), company.taxId()),
@@ -57,6 +62,12 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
                         line.getUnitPrice(), line.getDiscountAmount(), line.getTotal())).toList(),
                 SaleTotalsView.from(sale),
                 sale.getPayments().stream().map(payment -> PaymentView.from(payment)).toList(),
-                sale.getChangeDue());
+                sale.getChangeDue(),
+                sale.getType(),
+                sale.getOriginalReceiptNumber(),
+                sale.getReason(),
+                sale.getRefundMethod(),
+                creditNote == null ? null : creditNote.getNumber(),
+                creditNote == null ? null : creditNote.getAmount());
     }
 }

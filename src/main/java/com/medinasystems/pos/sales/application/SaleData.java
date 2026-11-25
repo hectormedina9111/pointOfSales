@@ -57,4 +57,17 @@ public final class SaleData {
      */
     public record HoldCheckout(long holdId, List<PaymentLine> payments, String idempotencyKey, String notes) {
     }
+
+    /** One line of a return: a line of the original sale and the quantity that comes back. */
+    public record ReturnLine(long saleLineId, BigDecimal quantity) {
+    }
+
+    /**
+     * A return of a sale. {@code refunds} are the refunds of a return on the day of the sale; they must be empty for a
+     * later return, which is refunded with a credit note. The authorization is used when the signed-in user does not hold
+     * the return privilege.
+     */
+    public record Return(long saleId, List<ReturnLine> lines, String reason, List<PaymentLine> refunds,
+                         Authorization authorization, String idempotencyKey) {
+    }
 }
