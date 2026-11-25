@@ -16,8 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 import com.medinasystems.pos.catalog.SaleableProduct;
 import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.inventory.StockMovementType;
+import com.medinasystems.pos.inventory.StockReferenceType;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
 import com.medinasystems.pos.inventory.domain.InventoryItem;
+import com.medinasystems.pos.inventory.domain.InventoryMovement;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentSpecifications;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
@@ -26,6 +28,7 @@ import com.medinasystems.pos.inventory.infrastructure.InventoryMovementRepositor
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementSpecifications;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
+import com.medinasystems.pos.sales.SaleReceipts;
 import com.medinasystems.pos.security.UserDirectory;
 import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
@@ -52,10 +55,12 @@ public class InventoryQueryService {
     private final BranchDirectory branchDirectory;
     private final UserDirectory users;
     private final SaleableProducts products;
+    private final SaleReceipts receipts;
 
     public InventoryQueryService(InventoryItemRepository items, InventoryMovementRepository movements,
                                  InventoryDocumentRepository documents, BranchScope scope,
-                                 BranchDirectory branchDirectory, UserDirectory users, SaleableProducts products) {
+                                 BranchDirectory branchDirectory, UserDirectory users, SaleableProducts products,
+                                 SaleReceipts receipts) {
         this.items = items;
         this.movements = movements;
         this.documents = documents;
@@ -63,6 +68,7 @@ public class InventoryQueryService {
         this.branchDirectory = branchDirectory;
         this.users = users;
         this.products = products;
+        this.receipts = receipts;
     }
 
     /**
@@ -152,8 +158,17 @@ public class InventoryQueryService {
             return Page.empty(pageable);
         }
         InventoryNames names = names();
-        return movements.findAll(InventoryMovementSpecifications.matching(filter.branchId(), productId, type, from, to),
-                pageable).map(movement -> StockMovementView.of(movement, names));
+        Page<InventoryMovement> page = movements.findAll(
+                InventoryMovementSpecifications.matching(filter.branchId(), productId, type, from, to), pageable);
+        // One lookup for the whole page: the receipts of its sales and returns.
+        List<Long> saleIds = page.getContent().stream()
+                .filter(movement -> movement.getReferenceType() == StockReferenceType.SALE
+                        || movement.getReferenceType() == StockReferenceType.SALE_RETURN)
+                .map(InventoryMovement::getReferenceId)
+                .distinct()
+                .toList();
+        Map<Long, String> receiptNumbers = receipts.receiptNumbers(saleIds);
+        return page.map(movement -> StockMovementView.of(movement, names, receiptNumbers));
     }
 
     /** The documents of the visible branches. {@code search} matches part of the number. */
