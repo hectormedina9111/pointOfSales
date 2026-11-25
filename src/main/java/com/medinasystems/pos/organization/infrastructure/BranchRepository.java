@@ -1,6 +1,7 @@
 package com.medinasystems.pos.organization.infrastructure;
 
 import java.util.Collection;
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,4 +16,6 @@ public interface BranchRepository extends JpaRepository<Branch, Long> {
     boolean existsByCodeAndIdNot(String code, Long id);
 
     Page<Branch> findByIdIn(Collection<Long> ids, Pageable pageable);
+
+    List<Branch> findByActiveTrueOrderByCodeAsc();
 }

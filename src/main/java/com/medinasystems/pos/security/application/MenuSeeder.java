@@ -76,6 +76,8 @@ public class MenuSeeder implements ApplicationRunner {
                     "Documentos de inventario", "/inventory/documents", "file-text", 2),
             new MenuDefinition("MENU_INVENTORY_SERIALS", "MENU_INVENTORY", "inventory", "Seriales",
                     "/inventory/serials", "barcode", 3),
+            new MenuDefinition("MENU_INVENTORY_TRANSFERS", "MENU_INVENTORY", "inventory", "Transferencias",
+                    "/inventory/transfers", "truck", 4),
             new MenuDefinition("MENU_PRICING", null, "pricing", "Precios", null, "tag", 30),
             new MenuDefinition("MENU_PRICING_PRICE_LISTS", "MENU_PRICING", "pricing", "Listas de precios",
                     "/pricing/price-lists", "list", 1),

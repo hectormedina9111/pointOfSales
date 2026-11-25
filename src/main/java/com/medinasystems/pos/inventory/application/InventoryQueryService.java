@@ -26,6 +26,7 @@ import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemSpecifications;
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementSpecifications;
+import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.sales.SaleReceipts;
@@ -56,11 +57,12 @@ public class InventoryQueryService {
     private final UserDirectory users;
     private final SaleableProducts products;
     private final SaleReceipts receipts;
+    private final InventoryTransferRepository transfers;
 
     public InventoryQueryService(InventoryItemRepository items, InventoryMovementRepository movements,
                                  InventoryDocumentRepository documents, BranchScope scope,
                                  BranchDirectory branchDirectory, UserDirectory users, SaleableProducts products,
-                                 SaleReceipts receipts) {
+                                 SaleReceipts receipts, InventoryTransferRepository transfers) {
         this.items = items;
         this.movements = movements;
         this.documents = documents;
@@ -69,6 +71,7 @@ public class InventoryQueryService {
         this.users = users;
         this.products = products;
         this.receipts = receipts;
+        this.transfers = transfers;
     }
 
     /**
@@ -208,7 +211,7 @@ public class InventoryQueryService {
     }
 
     private InventoryNames names() {
-        return new InventoryNames(branchDirectory, users, products, documents);
+        return new InventoryNames(branchDirectory, users, products, documents, transfers);
     }
 
     /** The branch a list is restricted to: null when it is not restricted. */

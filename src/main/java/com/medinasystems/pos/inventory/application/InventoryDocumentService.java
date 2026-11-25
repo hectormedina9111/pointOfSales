@@ -30,6 +30,7 @@ import com.medinasystems.pos.inventory.domain.StockCalculator;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentCounterRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
+import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.organization.BranchDirectory;
@@ -70,13 +71,14 @@ public class InventoryDocumentService {
     private final ApplicationEventPublisher events;
     private final AuditorAware<String> auditor;
     private final Clock clock;
+    private final InventoryTransferRepository transfers;
 
     public InventoryDocumentService(InventoryDocumentRepository documents, InventoryDocumentCounterRepository counters,
                                     InventoryItemRepository items, StockLedger ledger, InventoryBranches branches,
                                     BranchScope scope, NodeProperties node, BranchDirectory branchDirectory,
                                     UserDirectory users, SaleableProducts products, Outbox outbox,
                                     SerialTrail serialTrail, ApplicationEventPublisher events,
-                                    AuditorAware<String> auditor, Clock clock) {
+                                    AuditorAware<String> auditor, Clock clock, InventoryTransferRepository transfers) {
         this.documents = documents;
         this.counters = counters;
         this.items = items;
@@ -92,6 +94,7 @@ public class InventoryDocumentService {
         this.events = events;
         this.auditor = auditor;
         this.clock = clock;
+        this.transfers = transfers;
     }
 
     /**
@@ -237,7 +240,7 @@ public class InventoryDocumentService {
     }
 
     private InventoryNames names() {
-        return new InventoryNames(branchDirectory, users, products, documents);
+        return new InventoryNames(branchDirectory, users, products, documents, transfers);
     }
 
     private static Map<String, Object> snapshot(InventoryDocument document) {
