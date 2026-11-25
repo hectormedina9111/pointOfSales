@@ -7,6 +7,12 @@ package com.medinasystems.pos.security;
 public interface ActionAuthorizer {
 
     /**
+     * Privilege that lets a user see the sales and cash sessions of every cashier of the node. Without it, the lists
+     * show only the user's own documents.
+     */
+    String SALES_VIEW_ALL_PRIVILEGE = "ACTION_SALES_VIEW_ALL";
+
+    /**
      * Checks a user's credentials and privilege. The user must be active, not locked, assigned to a branch this node
      * serves, and must hold the privilege. A failed password counts toward the account lockout.
      *

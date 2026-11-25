@@ -70,11 +70,12 @@ public class CashSessionController {
     public PageResponse<CashSessionView> list(@RequestParam(required = false) CashSessionStatus status,
                                               @RequestParam(required = false) Long cashRegisterId,
                                               @RequestParam(required = false) Long userId,
+                                              @RequestParam(required = false) Long branchId,
                                               @RequestParam(required = false) Instant from,
                                               @RequestParam(required = false) Instant to,
                                               @PageableDefault(sort = {"openedAt", "id"},
                                                       direction = Sort.Direction.DESC) Pageable pageable) {
-        return PageResponse.from(sessions.list(status, cashRegisterId, userId, from, to, pageable));
+        return PageResponse.from(sessions.list(status, cashRegisterId, userId, branchId, from, to, pageable));
     }
 
     @PostMapping("/{id}/movements")

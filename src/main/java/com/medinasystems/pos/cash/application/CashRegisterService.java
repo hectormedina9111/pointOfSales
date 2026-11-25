@@ -74,6 +74,7 @@ public class CashRegisterService {
     public CashRegisterView create(CashRegisterData data) {
         requireBranch(data.branchId());
         requireUniqueCode(data.branchId(), data.code(), null);
+        requireUniqueReceiptPrefix(data.receiptPrefix(), null);
         CashRegister register = new CashRegister(data.branchId(), data.code(), data.name(), data.receiptPrefix(),
                 data.active());
         CashRegister saved = registers.save(register);
@@ -93,6 +94,7 @@ public class CashRegisterService {
             }
         }
         requireUniqueCode(data.branchId(), data.code(), id);
+        requireUniqueReceiptPrefix(data.receiptPrefix(), id);
         Map<String, Object> before = snapshot(register);
         register.update(data.branchId(), data.code(), data.name(), data.receiptPrefix(), data.active());
         events.publishEvent(AuditEvent.updated("CASH_REGISTER_UPDATED", "cash_register", id, before,
@@ -117,6 +119,20 @@ public class CashRegisterService {
         if (taken) {
             throw new BusinessRuleException("DUPLICATE_CASH_REGISTER_CODE",
                     "The cash register code is already in use in this branch");
+        }
+    }
+
+    /**
+     * The receipt prefix is unique across all registers: two registers with the same prefix would print the same receipt
+     * numbers. The database has the same constraint (V15); this check gives the clear error first.
+     */
+    private void requireUniqueReceiptPrefix(String receiptPrefix, Long id) {
+        boolean taken = id == null
+                ? registers.existsByReceiptPrefix(receiptPrefix)
+                : registers.existsByReceiptPrefixAndIdNot(receiptPrefix, id);
+        if (taken) {
+            throw new BusinessRuleException("DUPLICATE_RECEIPT_PREFIX",
+                    "The receipt prefix is already used by another cash register");
         }
     }
 

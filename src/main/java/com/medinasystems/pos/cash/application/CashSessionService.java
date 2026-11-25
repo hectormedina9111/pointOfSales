@@ -33,6 +33,7 @@ import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
+import com.medinasystems.pos.sync.Outbox;
 
 /**
  * Cash sessions of a store: opening, deposits and withdrawals, the summary and the closing count. Every operation
@@ -46,7 +47,6 @@ public class CashSessionService {
     static final String WITHDRAWAL_PRIVILEGE = "ACTION_CASH_WITHDRAWAL";
 
     private static final String OPEN_REGISTER_INDEX = "cash_session_open_register_uk";
-    private static final String OPEN_USER_INDEX = "cash_session_open_user_uk";
 
     private final CashSessionRepository sessions;
     private final CashMovementRepository movements;
@@ -54,19 +54,21 @@ public class CashSessionService {
     private final BranchScope scope;
     private final ActionAuthorizer authorizer;
     private final ObjectProvider<SessionPaymentTotals> paymentTotals;
+    private final Outbox outbox;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public CashSessionService(CashSessionRepository sessions, CashMovementRepository movements,
                               CashRegisterRepository registers, BranchScope scope, ActionAuthorizer authorizer,
-                              ObjectProvider<SessionPaymentTotals> paymentTotals, ApplicationEventPublisher events,
-                              Clock clock) {
+                              ObjectProvider<SessionPaymentTotals> paymentTotals, Outbox outbox,
+                              ApplicationEventPublisher events, Clock clock) {
         this.sessions = sessions;
         this.movements = movements;
         this.registers = registers;
         this.scope = scope;
         this.authorizer = authorizer;
         this.paymentTotals = paymentTotals;
+        this.outbox = outbox;
         this.events = events;
         this.clock = clock;
     }
@@ -98,6 +100,7 @@ public class CashSessionService {
         }
         events.publishEvent(new AuditEvent("CASH_SESSION_OPENED", "cash_session", saved.getId(), null,
                 sessionSnapshot(saved)));
+        enqueueSnapshot(saved, register.getBranchId());
         return CashSessionDetailView.from(saved, List.of());
     }
 
@@ -117,25 +120,35 @@ public class CashSessionService {
 
     /**
      * Sessions the node can see, newest first. A store lists the sessions of the registers of its branch; the central
-     * node lists all of them. A store without a branch sees none.
+     * node lists all of them. A store without a branch sees none. Without {@code ACTION_SALES_VIEW_ALL} the list shows
+     * only the signed-in user's own sessions, whatever {@code userId} asks for. {@code branchId} narrows the list to one
+     * branch; on a store, another branch gives an empty list.
      */
     @Transactional(readOnly = true)
-    public Page<CashSessionView> list(CashSessionStatus status, Long cashRegisterId, Long userId, Instant from,
-                                      Instant to, Pageable pageable) {
-        List<Long> registerIds = null;
+    public Page<CashSessionView> list(CashSessionStatus status, Long cashRegisterId, Long userId, Long branchId,
+                                      Instant from, Instant to, Pageable pageable) {
+        long current = currentUserId();
+        Long owner = authorizer.hasPrivilege(current, ActionAuthorizer.SALES_VIEW_ALL_PRIVILEGE)
+                ? userId : Long.valueOf(current);
+        Long filterBranch = branchId;
         if (!scope.allBranches()) {
-            Optional<Long> branch = scope.nodeBranchId();
-            if (branch.isEmpty()) {
+            Optional<Long> node = scope.nodeBranchId();
+            if (node.isEmpty() || (branchId != null && !branchId.equals(node.get()))) {
                 return Page.empty(pageable);
             }
-            registerIds = registers.findByBranchId(branch.get()).stream().map(CashRegister::getId).toList();
+            filterBranch = node.get();
+        }
+        List<Long> registerIds = null;
+        if (filterBranch != null) {
+            registerIds = registers.findByBranchId(filterBranch).stream().map(CashRegister::getId).toList();
             if (registerIds.isEmpty()) {
                 return Page.empty(pageable);
             }
         }
-        return sessions.findAll(
-                CashSessionSpecifications.matching(registerIds, cashRegisterId, userId, status, from, to), pageable)
-                .map(CashSessionView::from);
+        Page<CashSession> page = sessions.findAll(
+                CashSessionSpecifications.matching(registerIds, cashRegisterId, owner, status, from, to), pageable);
+        Map<Long, Long> branchByRegister = branchesOf(page.getContent());
+        return page.map(session -> CashSessionView.from(session, branchByRegister.get(session.getCashRegisterId())));
     }
 
     /**
@@ -152,6 +165,7 @@ public class CashSessionService {
         CashMovement saved = movements.save(movement);
         events.publishEvent(new AuditEvent("CASH_MOVEMENT_ADDED", "cash_movement", saved.getId(), null,
                 movementSnapshot(saved)));
+        enqueueSnapshot(session, branchOf(session));
         return CashMovementView.from(saved);
     }
 
@@ -175,7 +189,33 @@ public class CashSessionService {
         session.close(userId, expected(session), counted, data.notes(), clock.instant());
         events.publishEvent(new AuditEvent("CASH_SESSION_CLOSED", "cash_session", session.getId(), null,
                 closingSnapshot(session)));
+        enqueueSnapshot(session, branchOf(session));
         return detail(session);
+    }
+
+    /**
+     * Queues the full snapshot of the session (the session and all its movements) for the central node. Called after
+     * each change, so the latest snapshot always carries everything; the central node keeps the most recent one.
+     */
+    private void enqueueSnapshot(CashSession session, long branchId) {
+        outbox.enqueue(CashSessionDocument.EVENT_TYPE, CashSessionDocument.of(session, branchId,
+                movements.findByCashSessionIdOrderByIdAsc(session.getId())));
+    }
+
+    private long branchOf(CashSession session) {
+        return registers.findById(session.getCashRegisterId())
+                .map(CashRegister::getBranchId)
+                .orElseThrow(() -> new IllegalStateException("The cash session has no register: " + session.getId()));
+    }
+
+    /** The branch of each register of the given sessions, read once per page. */
+    private Map<Long, Long> branchesOf(List<CashSession> found) {
+        List<Long> registerIds = found.stream().map(CashSession::getCashRegisterId).distinct().toList();
+        Map<Long, Long> branches = new LinkedHashMap<>();
+        for (CashRegister register : registers.findAllById(registerIds)) {
+            branches.put(register.getId(), register.getBranchId());
+        }
+        return branches;
     }
 
     /**
@@ -247,16 +287,14 @@ public class CashSessionService {
     }
 
     /**
-     * Two open sessions with the same register or the same cashier are refused by the database; the index name tells
-     * which rule was broken. Any other violation is not ours to translate.
+     * Two open sessions of the same register are refused by the database; the index name tells which rule was broken.
+     * The one open session per cashier is checked by the query in open(), not by an index (see V15).
+     * Any other violation is not ours to translate.
      */
     private static RuntimeException openConflict(DataIntegrityViolationException ex) {
         String cause = String.valueOf(ex.getMostSpecificCause().getMessage());
         if (cause.contains(OPEN_REGISTER_INDEX)) {
             return new BusinessRuleException("CASH_REGISTER_BUSY", "The cash register already has an open session");
-        }
-        if (cause.contains(OPEN_USER_INDEX)) {
-            return new BusinessRuleException("USER_HAS_OPEN_SESSION", "The cashier already has an open session");
         }
         return ex;
     }

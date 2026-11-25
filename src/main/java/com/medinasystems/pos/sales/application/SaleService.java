@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -53,6 +54,7 @@ import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
+import com.medinasystems.pos.sync.Outbox;
 
 /**
  * Sales of a store: quotes, holds, charges and the reads. A charge recomputes everything on the server, checks the
@@ -79,6 +81,8 @@ public class SaleService {
     private final ActionAuthorizer authorizer;
     private final BranchScope scope;
     private final SalesProperties properties;
+    private final Outbox outbox;
+    private final AuditorAware<String> auditor;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -86,7 +90,8 @@ public class SaleService {
                        SaleableProducts products, ProductPricing pricing, OpenSessions openSessions,
                        BranchDirectory branches, CompanyDirectory companies, CashRegisterDirectory registers,
                        UserDirectory users, ActionAuthorizer authorizer, BranchScope scope,
-                       SalesProperties properties, ApplicationEventPublisher events, Clock clock) {
+                       SalesProperties properties, Outbox outbox, AuditorAware<String> auditor,
+                       ApplicationEventPublisher events, Clock clock) {
         this.sales = sales;
         this.methods = methods;
         this.counters = counters;
@@ -100,6 +105,8 @@ public class SaleService {
         this.authorizer = authorizer;
         this.scope = scope;
         this.properties = properties;
+        this.outbox = outbox;
+        this.auditor = auditor;
         this.events = events;
         this.clock = clock;
     }
@@ -194,6 +201,7 @@ public class SaleService {
         counters.save(counter);
         Sale saved = sales.saveAndFlush(sale);
         events.publishEvent(AuditEvent.created("SALE_PAID", "sale", saved.getId(), paidSnapshot(saved)));
+        outbox.enqueue(SaleDocument.EVENT_TYPE, SaleDocument.of(saved));
         return new SaleResult(SaleView.from(saved), true);
     }
 
@@ -204,20 +212,25 @@ public class SaleService {
 
     /**
      * Sales the node can see, newest first. A store lists the sales of its branch; the central node lists all of them.
-     * A store without a branch sees none.
+     * A store without a branch sees none. Without {@code ACTION_SALES_VIEW_ALL} the list shows only the signed-in
+     * cashier's own sales, whatever {@code cashierId} asks for. {@code branchId} narrows the list to one branch; on a
+     * store, another branch gives an empty list.
      */
     @Transactional(readOnly = true)
-    public Page<SaleSummaryView> list(SaleStatus status, Long cashSessionId, Long cashierId, Instant from, Instant to,
-                                      Pageable pageable) {
-        Long branchId = null;
+    public Page<SaleSummaryView> list(SaleStatus status, Long cashSessionId, Long cashierId, Long branchId,
+                                      Instant from, Instant to, Pageable pageable) {
+        long current = currentUserId();
+        Long owner = authorizer.hasPrivilege(current, ActionAuthorizer.SALES_VIEW_ALL_PRIVILEGE)
+                ? cashierId : Long.valueOf(current);
+        Long filterBranch = branchId;
         if (!scope.allBranches()) {
             Optional<Long> node = scope.nodeBranchId();
-            if (node.isEmpty()) {
+            if (node.isEmpty() || (branchId != null && !branchId.equals(node.get()))) {
                 return Page.empty(pageable);
             }
-            branchId = node.get();
+            filterBranch = node.get();
         }
-        return sales.findAll(SaleSpecifications.matching(branchId, status, cashSessionId, cashierId, from, to),
+        return sales.findAll(SaleSpecifications.matching(filterBranch, status, cashSessionId, owner, from, to),
                 pageable).map(sale -> SaleSummaryView.from(sale));
     }
 
@@ -293,9 +306,14 @@ public class SaleService {
         return drafts;
     }
 
+    /**
+     * The counter of the register, locked for the rest of the charge. It is created first with ON CONFLICT DO NOTHING, so
+     * two first charges of a register do not fail on the primary key: the second waits, then finds the row.
+     */
     private ReceiptCounter lockCounter(long cashRegisterId) {
+        counters.insertIfAbsent(cashRegisterId, clock.instant(), auditor.getCurrentAuditor().orElse("system"));
         return counters.findForUpdate(cashRegisterId)
-                .orElseGet(() -> counters.saveAndFlush(new ReceiptCounter(cashRegisterId)));
+                .orElseThrow(() -> new IllegalStateException("The receipt counter of the register is missing"));
     }
 
     private Sale findHold(long id, long cashRegisterId) {

@@ -1840,3 +1840,63 @@ Caso base del criterio de aceptación: L 115.00 con ISV 15 % → base 100.00, IS
 - **Primer cobro de una caja con dos peticiones simultáneas con la misma clave**: la fila de `cash_register_counter` aún no existe y las dos la intentan crear; una falla por llave primaria. Es raro. Se corrige creando la fila al abrir la caja.
 - **Prefijo de recibos único**: sigue pendiente desde el paso 1. `receipt_number` es `UNIQUE`, así que dos cajas con el mismo prefijo darían error al cobrar en vez de recibos repetidos sin aviso.
 - **Sin pruebas** (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.
+
+### Decisiones de implementación: 3A paso 4 (subida de ventas y sesiones a la central)
+
+**API pública que se agrega (raíz de cada módulo)**
+
+- `sync`: `Outbox.enqueue(eventType, payload)` para los productores. Solo la tienda encola: escribe en `sync_outbox` dentro de la transacción de quien llama, con el `JsonMapper` de la aplicación. En la central el bean existe, pero llamarlo lanza `IllegalStateException`.
+- `sync`: SPI `UploadHandler` (`eventType()` y `apply(storeNodeId, storeBranchId, JsonNode payload)`) y `UploadOutcome` (ACCEPTED, REJECTED o RETRY, con código). Cada tipo de evento tiene un solo manejador; `CentralUploadService` despacha por tipo. Un tipo sin manejador es `REJECTED` con `UNKNOWN_EVENT`.
+- `sync`: `UploadPayload`, lectores de campos para los manejadores. Lanzan `InvalidPayloadException` si falta un campo o tiene otro tipo; el manejador lo convierte en `REJECTED` con `INVALID_PAYLOAD` antes de escribir nada.
+- `cash`: `CashSessionDirectory.exists(id)`. Ventas comprueba la sesión con esta API, sin leer tablas de caja.
+- `PASSWORD_CHANGED` pasa a `PasswordChangeUploadHandler`, con el mismo comportamiento que antes.
+
+**Eventos**
+
+- `SALE_PAID` (`SaleDocument`): la fila de la venta, sus líneas y sus pagos, con los ids de la tienda y sus columnas de auditoría. Se encola en el cobro, después de guardar. Nunca lleva el número de tarjeta.
+- `CASH_SESSION` (`CashSessionDocument`): foto completa de la sesión y de todos sus movimientos. Se encola al abrir, en cada movimiento y al cerrar. Cada foto trae todo, así que la última gana.
+- Montos como números JSON y fechas como texto ISO-8601. La tienda lee los números con `decimalValue()`, que conserva los centavos y las cantidades con tres decimales.
+
+**Central**
+
+- **Mismos ids.** Las filas se insertan con el id que trae el documento, que está en el rango de la tienda. No se usa la secuencia de la central, así que no hay colisiones entre nodos.
+- **Sin revalidación.** Se comprueba solo la completitud (campos requeridos y tipos, `INVALID_PAYLOAD`), que la venta esté `PAID` y que `branchId` sea la sucursal de la tienda (`BRANCH_MISMATCH`). Una tienda sin sucursal también falla con `BRANCH_MISMATCH`, porque sin sucursal no puede haber ventas. Todo se valida antes de la primera escritura, así que un rechazo nunca deja filas a medias.
+- **Ventas.** Si la venta ya existe, se responde `ACCEPTED` sin cambios: en 3A una venta pagada no cambia. `sale.synced_at` es el momento en que la central recibió la venta.
+- **Sesiones.** Upsert por id (la última foto gana). Los movimientos se insertan con `ON CONFLICT DO NOTHING`, porque no cambian.
+- **Sin reglas de tienda.** La central solo comprueba completitud y sucursal. No aplica la regla de una sesión abierta por cajero: un cajero asignado a dos sucursales puede tener una sesión abierta en cada tienda, y la central guarda ambas. La regla por caja sigue en la base de datos (`cash_session_open_register_uk`), porque cada caja pertenece a una sola sucursal y, por tanto, a una sola tienda.
+- **Orden y claves foráneas.** La sesión se encola al abrir, antes que cualquier venta de su caja, y la cola sube en orden de id. Si una venta llega sin su sesión, la central responde `RETRY` con `CASH_SESSION_MISSING` y no escribe nada. La comprobación es explícita (`CashSessionDirectory.exists`) y no depende de capturar una violación de clave foránea dentro de la transacción de PostgreSQL, que quedaría abortada.
+- **RETRY.** No se guarda en `sync_upload_receipt`, así que el siguiente envío vuelve a aplicar el documento. La tienda registra el intento (`attempts` y `last_error` con el código) y deja la fila pendiente. Un RETRY no corta el ciclo: no es un fallo de transporte y los documentos no afectan a la réplica.
+- **Errores inesperados.** Una restricción violada o un fallo de base de datos sigue fallando toda la petición, como antes: la cola queda pendiente y el ciclo se detiene. Nunca se convierte en RETRY, porque en el caso de las contraseñas eso permitiría bajar cambios antes de subir el propio.
+
+**Rango de secuencias (corrige el pendiente del paso 3)**
+
+- `pos.sync.extra-sequences` (`application.yml`) lista las secuencias con nombre que también se mueven al rango del nodo. Hoy: `sale_internal_number_seq`.
+- Estas secuencias no tienen tabla de la que leer el máximo. `IdRangeSequenceAdjuster` toma su siguiente valor (`last_value`, o `last_value + 1` si ya se usó), nunca menor que el inicio del rango, y falla si el rango se agota. Las tablas siguen con la regla de `MAX(id) + 1`.
+- Una base de desarrollo que vendió antes de este cambio tiene números internos fuera del rango. Se reinicia la base local; no se reasignan números.
+
+**Correlativo de recibos (corrige la carrera del paso 3)**
+
+- Antes de `SELECT ... FOR UPDATE`, el cobro hace `INSERT ... ON CONFLICT (cash_register_id) DO NOTHING`. El segundo cobro simultáneo de una caja que todavía no tiene correlativo espera a que termine el primero y luego encuentra la fila. Se usa la auditoría del usuario actual (`AuditorAware`).
+
+**Cajero: solo sus documentos (corrige el pendiente del paso 3)**
+
+- Nueva acción `ACTION_SALES_VIEW_ALL` ("Ver todas las ventas de la tienda"). La reciben ADMIN (`MenuSeeder`) y MANAGER (`RoleDefaultsSeeder`). CASHIER recibe `GET_SALES` y `GET_CASH_SESSIONS`. El código está en `ActionAuthorizer.SALES_VIEW_ALL_PRIVILEGE`, y lo usan ventas y caja.
+- Sin esa acción, `GET /sales` y `GET /cash-sessions` fuerzan el filtro al usuario actual, aunque se pida otro `cashierId` o `userId`. Con la acción, el filtro es el que pida la persona.
+- **Pendiente:** la consulta por id (`GET /sales/{id}`, `GET /cash-sessions/{id}`) todavía deja ver documentos de otro cajero de la misma tienda. Hay que decidir si aplica la misma regla.
+
+**Sucursal en los listados**
+
+- `SaleSummaryView` y `CashSessionView` llevan `branchId` (la sucursal de la caja, en el caso de las sesiones). Los dos listados aceptan el filtro `branchId`. En una tienda, pedir otra sucursal da una lista vacía.
+
+**Migración V15 (`V15__cash_session_rules.sql`)**
+
+- Se elimina el índice parcial único `cash_session_open_user_uk` (creado en V13). La regla "una sesión abierta por cajero" pasa a la aplicación de cada tienda: `CashSessionService.open` consulta `existsByUserIdAndStatus(OPEN)` antes de insertar y responde `USER_HAS_OPEN_SESSION`. La consulta es la regla; el índice ya no la garantiza.
+- Se mantiene `cash_session_open_register_uk`.
+- `cash_register.receipt_prefix` queda `UNIQUE` (`cash_register_receipt_prefix_uk`). `CashRegisterService` create y update rechazan un prefijo repetido con `DUPLICATE_RECEIPT_PREFIX` (422) antes de llegar a la base de datos. Cierra el pendiente del paso 1 y del paso 3.
+- **Atención:** una base local con prefijos repetidos debe corregirlos antes de migrar; si no, la migración falla.
+
+**Pendiente y límites**
+
+- `sale.synced_at` queda vacío en la tienda. La tienda no sabe todavía qué venta fue aceptada; el estado está en `sync_outbox` (`uploaded_at`, `result`). Decidir si se marca al recibir la respuesta.
+- **Caja compartida por dos tiendas.** La regla por caja de la base de datos rechazaría (con un error que bloquea la cola) una sesión de una caja que dos tiendas abrieran a la vez. Eso solo ocurre si dos tiendas comparten sucursal; hoy la central no lo impide. Decidir si una sucursal puede tener dos tiendas.
+- Sin pruebas (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.

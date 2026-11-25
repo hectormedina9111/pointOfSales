@@ -25,6 +25,7 @@ public class StoreOutboxUploader {
     static final int BATCH_SIZE = 100;
     private static final String ACCEPTED = "ACCEPTED";
     private static final String REJECTED = "REJECTED";
+    private static final String RETRY = "RETRY";
 
     private final SyncOutboxRepository outbox;
     private final CentralSyncClient client;
@@ -64,6 +65,10 @@ public class StoreOutboxUploader {
         for (UploadResult result : response.results()) {
             if (ACCEPTED.equals(result.result()) || REJECTED.equals(result.result())) {
                 outbox.markUploaded(result.outboxId(), result.result(), result.code(), answeredAt);
+            } else if (RETRY.equals(result.result())) {
+                // Not answered: the row stays pending and the attempt and its reason are recorded.
+                outbox.recordFailedAttempt(List.of(result.outboxId()),
+                        result.code() == null ? RETRY : result.code());
             }
         }
     }

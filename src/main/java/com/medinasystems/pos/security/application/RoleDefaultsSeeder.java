@@ -46,11 +46,13 @@ public class RoleDefaultsSeeder implements ApplicationRunner {
             "POST_CASH_SESSIONS", "GET_CASH_SESSIONS_CURRENT", "GET_CASH_SESSIONS_ID",
             "POST_CASH_SESSIONS_ID_MOVEMENTS", "GET_CASH_SESSIONS_ID_SUMMARY", "POST_CASH_SESSIONS_ID_CLOSE",
             "POST_SALES_QUOTE", "POST_SALES_HOLDS", "GET_SALES_HOLDS", "GET_SALES_HOLDS_ID", "DELETE_SALES_HOLDS_ID",
-            "POST_SALES", "GET_SALES_ID", "GET_SALES_ID_TICKET");
+            "POST_SALES", "GET_SALES_ID", "GET_SALES_ID_TICKET",
+            // The lists show the cashier's own documents: see ACTION_SALES_VIEW_ALL in the sales and cash services.
+            "GET_SALES", "GET_CASH_SESSIONS");
 
     private static final List<String> MANAGER_PRIVILEGES = Stream.concat(CASHIER_PRIVILEGES.stream(), Stream.of(
             "MENU_CASH_SESSIONS", "ACTION_SALE_DISCOUNT_OVERRIDE", "ACTION_CASH_WITHDRAWAL", "GET_CASH_REGISTERS_ID",
-            "GET_CASH_SESSIONS", "GET_SALES"))
+            "ACTION_SALES_VIEW_ALL"))
             .toList();
 
     /** Role code to the privilege codes it starts with. */
