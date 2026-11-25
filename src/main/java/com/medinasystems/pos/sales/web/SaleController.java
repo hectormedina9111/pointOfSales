@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.medinasystems.pos.sales.application.SaleData;
+import com.medinasystems.pos.sales.application.SaleFilter;
 import com.medinasystems.pos.sales.application.SaleQuoteView;
 import com.medinasystems.pos.sales.application.SaleResult;
 import com.medinasystems.pos.sales.application.SaleService;
@@ -110,16 +111,29 @@ public class SaleController {
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.sale());
     }
 
+    /**
+     * Sales of the node, newest first, of any status. All the filters are optional and are applied in the database:
+     * {@code search} matches the receipt number (or the internal number when it is all digits), {@code minTotal} and
+     * {@code maxTotal} bound the total, and {@code from} and {@code to} bound the creation time.
+     */
     @GetMapping
     public PageResponse<SaleSummaryView> list(@RequestParam(required = false) SaleStatus status,
+                                              @RequestParam(required = false) OrderType orderType,
                                               @RequestParam(required = false) Long cashSessionId,
+                                              @RequestParam(required = false) Long cashRegisterId,
                                               @RequestParam(required = false) Long cashierId,
+                                              @RequestParam(required = false) Long customerId,
                                               @RequestParam(required = false) Long branchId,
+                                              @RequestParam(required = false) String search,
+                                              @RequestParam(required = false) BigDecimal minTotal,
+                                              @RequestParam(required = false) BigDecimal maxTotal,
                                               @RequestParam(required = false) Instant from,
                                               @RequestParam(required = false) Instant to,
                                               @PageableDefault(sort = {"createdAt", "id"},
                                                       direction = Sort.Direction.DESC) Pageable pageable) {
-        return PageResponse.from(sales.list(status, cashSessionId, cashierId, branchId, from, to, pageable));
+        SaleFilter filter = new SaleFilter(branchId, cashierId, status, orderType, cashSessionId, cashRegisterId,
+                customerId, search, minTotal, maxTotal, from, to);
+        return PageResponse.from(sales.list(filter, pageable));
     }
 
     @GetMapping("/{id}")

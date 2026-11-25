@@ -57,7 +57,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 
 - Rutas bajo `/api/v1`, en inglés y en plural (`/products`, `/price-lists`).
 - JSON en `camelCase`. Errores en formato RFC 9457 (`application/problem+json`).
-- Listados paginados con `page`, `size`, `sort`.
+- Listados paginados con `page`, `size`, `sort`. Filtros, orden y paginación siempre en la consulta a la base de datos (Specification o query), nunca en memoria.
 - Cada endpoint queda protegido por un privilegio ENDPOINT (tabla `privilege`), registrado automáticamente al arrancar. No usar roles fijos en el código (`hasRole('ADMIN')`).
 - Además del privilegio, las consultas se filtran por nodo: la central ve todas las sucursales y cada tienda solo la sucursal que le asignó la central (`store_identity.branch_id`). La tabla `user_branch` solo decide en qué tienda puede iniciar sesión cada usuario.
 - DELETE sobre catálogos desactiva, no borra.
