@@ -66,6 +66,7 @@ public class InventoryDocumentService {
     private final UserDirectory users;
     private final SaleableProducts products;
     private final Outbox outbox;
+    private final SerialTrail serialTrail;
     private final ApplicationEventPublisher events;
     private final AuditorAware<String> auditor;
     private final Clock clock;
@@ -74,7 +75,8 @@ public class InventoryDocumentService {
                                     InventoryItemRepository items, StockLedger ledger, InventoryBranches branches,
                                     BranchScope scope, NodeProperties node, BranchDirectory branchDirectory,
                                     UserDirectory users, SaleableProducts products, Outbox outbox,
-                                    ApplicationEventPublisher events, AuditorAware<String> auditor, Clock clock) {
+                                    SerialTrail serialTrail, ApplicationEventPublisher events,
+                                    AuditorAware<String> auditor, Clock clock) {
         this.documents = documents;
         this.counters = counters;
         this.items = items;
@@ -86,6 +88,7 @@ public class InventoryDocumentService {
         this.users = users;
         this.products = products;
         this.outbox = outbox;
+        this.serialTrail = serialTrail;
         this.events = events;
         this.auditor = auditor;
         this.clock = clock;
@@ -128,8 +131,8 @@ public class InventoryDocumentService {
         // Flushes the lines, so they have their ids for the upload.
         documents.saveAndFlush(document);
         if (node.isStore()) {
-            outbox.enqueue(InventoryDocumentDocument.EVENT_TYPE,
-                    InventoryDocumentDocument.of(document, moved, resultingItems(moved, branchId)));
+            outbox.enqueue(InventoryDocumentDocument.EVENT_TYPE, InventoryDocumentDocument.of(document, moved,
+                    resultingItems(moved, branchId), serialTrail.of(moved)));
         }
         events.publishEvent(AuditEvent.created("INVENTORY_DOCUMENT_POSTED", "inventory_document", document.getId(),
                 snapshot(document)));

@@ -44,15 +44,18 @@ public class SaleStockListener {
     private final InventoryItemRepository items;
     private final Outbox outbox;
     private final NodeProperties node;
+    private final SerialTrail serialTrail;
     private final AuditorAware<String> auditor;
 
     public SaleStockListener(StockLedger ledger, SaleableProducts products, InventoryItemRepository items,
-                             Outbox outbox, NodeProperties node, AuditorAware<String> auditor) {
+                             Outbox outbox, NodeProperties node, SerialTrail serialTrail,
+                             AuditorAware<String> auditor) {
         this.ledger = ledger;
         this.products = products;
         this.items = items;
         this.outbox = outbox;
         this.node = node;
+        this.serialTrail = serialTrail;
         this.auditor = auditor;
     }
 
@@ -104,7 +107,7 @@ public class SaleStockListener {
         }
         String by = auditor.getCurrentAuditor().orElse(SYSTEM_AUDITOR);
         outbox.enqueue(InventoryMovementsDocument.EVENT_TYPE, InventoryMovementsDocument.of(branchId, by, moved,
-                ResultingStock.of(items, moved, branchId)));
+                ResultingStock.of(items, moved, branchId), serialTrail.of(moved)));
     }
 
     private boolean tracksInventory(long productId) {

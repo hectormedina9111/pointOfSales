@@ -8,6 +8,7 @@ import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.Payment;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.sales.domain.SaleLine;
+import com.medinasystems.pos.sales.domain.SaleLineSerial;
 
 /**
  * A paid sale or return as the store uploads it (event SALE_PAID): the sale row, its lines and its payments, with the
@@ -61,7 +62,8 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
                                BigDecimal discountValue, BigDecimal discountAmount, String taxCode,
                                BigDecimal taxRate, BigDecimal taxAmount, BigDecimal subtotal, BigDecimal total,
                                Long priceListId, Long originalLineId, String createdAt, String createdBy,
-                               String updatedAt, String updatedBy, Integer version) {
+                               String updatedAt, String updatedBy, Integer version,
+                               List<SaleSerialDocument> serials) {
 
         static LineDocument of(SaleLine line) {
             return new LineDocument(line.getId(), line.getLineNumber(), line.getProductId(), line.getSku(),
@@ -70,7 +72,22 @@ public record SaleDocument(long id, long internalNumber, String receiptNumber, S
                     name(line.getDiscountType()), line.getDiscountValue(), line.getDiscountAmount(),
                     line.getTaxCode(), line.getTaxRate(), line.getTaxAmount(), line.getSubtotal(), line.getTotal(),
                     line.getPriceListId(), line.getOriginalLineId(), text(line.getCreatedAt()), line.getCreatedBy(),
-                    text(line.getUpdatedAt()), line.getUpdatedBy(), line.getVersion());
+                    text(line.getUpdatedAt()), line.getUpdatedBy(), line.getVersion(),
+                    line.getSerials().stream().map(SaleSerialDocument::of).toList());
+        }
+    }
+
+    /**
+     * One serial number of a line. In a sale it is sold; in a return line it is the unit that the return brings back. The
+     * central node marks the sale line's own copy as returned when the return reaches it.
+     */
+    public record SaleSerialDocument(long id, String serialNumber, boolean returned, String createdAt,
+                                     String createdBy, String updatedAt, String updatedBy, Integer version) {
+
+        static SaleSerialDocument of(SaleLineSerial serial) {
+            return new SaleSerialDocument(serial.getId(), serial.getSerialNumber(), serial.isReturned(),
+                    text(serial.getCreatedAt()), serial.getCreatedBy(), text(serial.getUpdatedAt()),
+                    serial.getUpdatedBy(), serial.getVersion());
         }
     }
 

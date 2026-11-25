@@ -177,6 +177,11 @@ public class SaleLine extends AuditableEntity {
         return serials.stream().map(SaleLineSerial::getSerialNumber).toList();
     }
 
+    /** The serial rows of the line, for the upload. */
+    public List<SaleLineSerial> getSerials() {
+        return List.copyOf(serials);
+    }
+
     /** The serial numbers of the line that came back. */
     public List<String> getReturnedSerialNumbers() {
         return serials.stream().filter(SaleLineSerial::isReturned).map(SaleLineSerial::getSerialNumber).toList();
