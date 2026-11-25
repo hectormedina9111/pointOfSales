@@ -10,6 +10,7 @@ import java.util.Map;
 import com.medinasystems.pos.sales.domain.Payment;
 import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.RefundMethod;
+import com.medinasystems.pos.sales.domain.ReturnOrigin;
 import com.medinasystems.pos.sales.domain.ReturnSourceLine;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.sales.domain.SaleLine;
@@ -60,6 +61,25 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
                 sale.getOrderType(), sale.isExclusive());
     }
 
+    /** The same view as the store shows it: the sameDay rule and the refund methods follow the store's own clock and zone. */
+    public ReturnableView withSameDay(boolean sameDayRefund, boolean asForeign) {
+        List<RefundMethod> allowed = sameDayRefund
+                ? List.of(RefundMethod.CASH, RefundMethod.ORIGINAL_METHOD)
+                : List.of(RefundMethod.CREDIT_NOTE);
+        return new ReturnableView(saleId, receiptNumber, customerId, customerName, paidAt, sameDayRefund, allowed,
+                payments, lines, branchId, branchName, asForeign, orderType, exclusive);
+    }
+
+    /** The sale a return of this view refunds. */
+    public ReturnOrigin origin() {
+        return new ReturnOrigin(saleId, receiptNumber, customerId, orderType, exclusive);
+    }
+
+    /** The lines of this view as the return calculator takes them. */
+    public List<ReturnSourceLine> sourceLines() {
+        return lines.stream().map(Line::toSource).toList();
+    }
+
     /** One payment method of the sale: what was paid, what was refunded by earlier returns, and what is left. */
     public record PaymentRefund(String paymentMethodCode, String paymentMethodName, BigDecimal paid,
                                 BigDecimal refunded, BigDecimal refundable) {
@@ -73,6 +93,13 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
                        BigDecimal returnedQuantity, BigDecimal returnableQuantity, BigDecimal netTotal,
                        BigDecimal refundedAmount, BigDecimal unitPrice, BigDecimal unitCost, String taxCode,
                        BigDecimal taxRate, BigDecimal listPrice, Long priceListId, boolean priceOverridden) {
+
+        /** The line as a return copies it. */
+        public ReturnSourceLine toSource() {
+            return new ReturnSourceLine(saleLineId, productId, sku, productName, quantity, returnedQuantity,
+                    returnableQuantity, netTotal, unitPrice, unitCost, taxCode, taxRate, listPrice, priceListId,
+                    priceOverridden);
+        }
 
         static Line of(ReturnSourceLine source, BigDecimal refunded) {
             return new Line(source.id(), source.productId(), source.description(), source.sku(), source.quantity(),
