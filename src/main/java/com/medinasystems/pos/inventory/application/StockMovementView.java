@@ -24,7 +24,7 @@ public record StockMovementView(long id, long branchId, long productId, String p
         String referenceNumber = switch (movement.getReferenceType()) {
             case INVENTORY_DOCUMENT -> names.documentNumber(movement.getReferenceId());
             case SALE, SALE_RETURN -> receiptNumbers.get(movement.getReferenceId());
-            case TRANSFER -> null;
+            case TRANSFER -> names.transferNumber(movement.getReferenceId());
         };
         return new StockMovementView(movement.getId(), movement.getBranchId(), movement.getProductId(),
                 names.productName(movement.getProductId()), movement.getType(), movement.getQuantity(),

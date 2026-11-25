@@ -25,6 +25,7 @@ import com.medinasystems.pos.inventory.infrastructure.InventoryMovementRepositor
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementSerialRepository;
 import com.medinasystems.pos.inventory.infrastructure.ProductSerialRepository;
 import com.medinasystems.pos.inventory.infrastructure.ProductSerialSpecifications;
+import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.sales.SaleReceipts;
 import com.medinasystems.pos.security.UserDirectory;
@@ -50,11 +51,14 @@ public class SerialQueryService {
     private final UserDirectory users;
     private final SaleableProducts products;
     private final SaleReceipts receipts;
+    private final InventoryTransferRepository transfers;
 
     public SerialQueryService(ProductSerialRepository units, InventoryMovementSerialRepository links,
                               InventoryMovementRepository movements, InventoryDocumentRepository documents,
                               BranchScope scope, BranchDirectory branchDirectory, UserDirectory users,
-                              SaleableProducts products, SaleReceipts receipts) {
+                              SaleableProducts products, SaleReceipts receipts,
+                              InventoryTransferRepository transfers) {
+        this.transfers = transfers;
         this.units = units;
         this.links = links;
         this.movements = movements;
@@ -145,7 +149,7 @@ public class SerialQueryService {
         String referenceNumber = switch (movement.getReferenceType()) {
             case INVENTORY_DOCUMENT -> names.documentNumber(movement.getReferenceId());
             case SALE, SALE_RETURN -> receiptNumbers.get(movement.getReferenceId());
-            case TRANSFER -> null;
+            case TRANSFER -> names.transferNumber(movement.getReferenceId());
         };
         return new MovementView(movement.getId(), movement.getType(), movement.getMovedAt(),
                 names.branchName(movement.getBranchId()), movement.getReferenceType(), movement.getReferenceId(),
@@ -176,6 +180,6 @@ public class SerialQueryService {
     }
 
     private InventoryNames names() {
-        return new InventoryNames(branchDirectory, users, products, documents);
+        return new InventoryNames(branchDirectory, users, products, documents, transfers);
     }
 }

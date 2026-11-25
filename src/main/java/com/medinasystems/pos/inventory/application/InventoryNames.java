@@ -7,7 +7,9 @@ import java.util.Optional;
 import com.medinasystems.pos.catalog.SaleableProduct;
 import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.inventory.domain.InventoryDocument;
+import com.medinasystems.pos.inventory.domain.InventoryTransfer;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
+import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.security.UserDirectory;
@@ -23,18 +25,21 @@ final class InventoryNames {
     private final UserDirectory users;
     private final SaleableProducts products;
     private final InventoryDocumentRepository documents;
+    private final InventoryTransferRepository transfers;
 
     private final Map<Long, Optional<BranchInfo>> branchCache = new HashMap<>();
     private final Map<Long, Optional<UserInfo>> userCache = new HashMap<>();
     private final Map<Long, Optional<SaleableProduct>> productCache = new HashMap<>();
     private final Map<Long, Optional<String>> numberCache = new HashMap<>();
+    private final Map<Long, Optional<String>> transferNumberCache = new HashMap<>();
 
     InventoryNames(BranchDirectory branches, UserDirectory users, SaleableProducts products,
-                   InventoryDocumentRepository documents) {
+                   InventoryDocumentRepository documents, InventoryTransferRepository transfers) {
         this.branches = branches;
         this.users = users;
         this.products = products;
         this.documents = documents;
+        this.transfers = transfers;
     }
 
     Optional<BranchInfo> branch(long branchId) {
@@ -64,5 +69,10 @@ final class InventoryNames {
     String documentNumber(long documentId) {
         return numberCache.computeIfAbsent(documentId,
                 id -> documents.findById(id).map(InventoryDocument::getNumber)).orElse(null);
+    }
+
+    String transferNumber(long transferId) {
+        return transferNumberCache.computeIfAbsent(transferId,
+                id -> transfers.findById(id).map(InventoryTransfer::getNumber)).orElse(null);
     }
 }
