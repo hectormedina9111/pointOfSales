@@ -1753,3 +1753,90 @@ Decisión del 24 de noviembre de 2026: hoy todos los listeners son síncronos y 
 - **Privilegios:** `RoleDefaultsSeeder` concede a CASHIER `POST_CASH_SESSIONS`, `GET_CASH_SESSIONS_CURRENT`, `GET_CASH_SESSIONS_ID`, `POST_CASH_SESSIONS_ID_MOVEMENTS`, `GET_CASH_SESSIONS_ID_SUMMARY` y `POST_CASH_SESSIONS_ID_CLOSE`. MANAGER recibe lo mismo y además `GET_CASH_SESSIONS` (listado). Los códigos salen de `EndpointPrivileges.code`.
 - **Auditoría:** `CASH_SESSION_OPENED`, `CASH_MOVEMENT_ADDED` y `CASH_SESSION_CLOSED`, en la misma transacción.
 - **Pendiente para el paso 3:** `SessionPaymentTotals` debe incluir las ventas. El cierre todavía no valida que el código de método exista (cash no conoce `sales`); cuando exista, se valida contra `payment_method`.
+
+### Decisiones de implementación: 3A paso 3 (ventas en la tienda)
+
+**API pública que se agrega (raíz de cada módulo, implementada en `application`)**
+
+- `pricing`: `ProductPricing.quote(productId, quantity, branchId, date)` devuelve `PriceQuote` (precio unitario con ISV, código y tasa del impuesto, lista o `null`). Usa `PriceService`, así que la cotización y el endpoint de precio no pueden dar cifras distintas.
+- `catalog`: `SaleableProducts.find(productId)` devuelve `SaleableProduct` (id, SKU, nombre, activo, factura exclusiva, costo y tipo). El tipo sale como texto (`GOOD` o `SERVICE`) para no exponer el enum del catálogo.
+- `cash`: `OpenSessions.currentFor(userId)` devuelve `OpenSessionInfo` (sesión, caja, sucursal y prefijo de recibos). Se añadió `CashRegisterDirectory.find(id)` para el nombre de la caja en el ticket; no estaba en el plan.
+- `organization`: `CompanyDirectory.find()` (razón social, nombre comercial, RTN y zona horaria) y `BranchDirectory.info(id)` (nombre y dirección). Ambos son nuevos.
+- `security`: `UserDirectory.find(userId)` (usuario y nombre completo, para el ticket). Es nuevo.
+- `sales` implementa `cash.SessionPaymentTotals` (`SessionCollections`). Ventas depende de caja; caja no depende de ventas, así que no hay ciclo.
+
+**Migración V14.** Tablas `sale`, `sale_line`, `payment` y `cash_register_counter`, más la secuencia `sale_internal_number_seq`. Desviaciones respecto del plan:
+
+- `sale` no tiene `customer_id`. Todas las ventas son de consumidor final hasta que llegue el módulo de clientes.
+- `payment.card_last4` es `VARCHAR(4)` y no `CHAR(4)`, igual que el resto de las columnas `CHAR` del modelo (V4).
+- `sale_line.subtotal` es la base gravable después de descuento, de modo que `subtotal + tax_amount = total`. El plan decía "cantidad por precio, menos descuento", que es la misma idea sin el impuesto.
+- `sale_line` no tiene índice único por `(sale_id, line_number)`. Al cambiar las líneas de una venta en espera, Hibernate inserta antes de borrar y una llave única rechazaría el cambio.
+- `cash_register_counter` lleva columnas de auditoría, como toda tabla (CLAUDE.md). No se replica: no tiene triggers de `sync_log_change`.
+- Ninguna de estas tablas se replica; suben a la central en el paso 4.
+
+**Totales (`SaleCalculator`, dominio puro).** El servidor recalcula todo en cada cotización, espera y cobro; los totales del cliente nunca se usan.
+
+1. Por línea: `gross = precio × cantidad` (redondeado a centavos; el precio incluye ISV).
+2. Descuento de línea: monto, o porcentaje del `gross`. Resultado: `lineDiscount`. Luego `afterLine = gross − lineDiscount`.
+3. Descuento de venta: monto, o porcentaje de la suma de los `afterLine`. Se reparte en proporción a cada `afterLine`; la última línea se queda con el redondeo, así que las partes suman el descuento exacto.
+4. `net = afterLine − share`. Si `net` fuera negativo, `DISCOUNT_EXCEEDS_TOTAL`.
+5. Impuesto hacia atrás desde el neto: `taxableBase = net / (1 + rate/100)` (HALF_UP a centavos) y `tax = net − taxableBase`.
+
+Totales de la venta: `subtotal` = suma de las bases de los `gross` (antes de descuento); `discountTotal` = suma de los descuentos (con ISV); `taxTotal` = suma de los impuestos; `total` = suma de los netos; `exempt_amount` = bases con tasa 0; `taxable_amount_15` y `taxable_amount_18` = bases con tasa 15 y 18. Invariante: `exempt + taxable15 + taxable18 + otherTaxable + taxTotal = total`.
+
+Ejemplo, dos productos con ISV 15 %: L 115.00 y L 57.50, descuento de venta de 10 %.
+
+| Paso | Valor |
+| --- | --- |
+| Gross | 115.00 + 57.50 = 172.50 |
+| Descuento de venta (10 % de 172.50) | 17.25 |
+| Parte de cada línea (proporcional; la última, con el resto) | 11.50 (L 115.00) y 5.75 (L 57.50) |
+| Neto | 103.50 y 51.75 (total 155.25) |
+| Base e ISV de la primera línea | 90.00 y 13.50 |
+| Base e ISV de la segunda línea | 45.00 y 6.75 |
+| Totales | subtotal 150.00, descuento 17.25, gravado 15 % 135.00, ISV 20.25, total 155.25 |
+
+Caso base del criterio de aceptación: L 115.00 con ISV 15 % → base 100.00, ISV 15.00. Cobrado con L 200.00 en efectivo: vuelto L 85.00.
+
+**Descuentos y autorización.**
+
+- El máximo es la propiedad `pos.sales.max-discount-percent` (variable `POS_SALES_MAX_DISCOUNT_PERCENT`, por defecto 10). Se compara exacto, sin redondear: un descuento de exactamente el máximo se permite y un centavo más no.
+- Se revisa cada línea (descuento de línea sobre su `gross`) y la venta (descuento de venta sobre la suma de los `afterLine`).
+- Al cobrar, si algo pasa del máximo: con `ACTION_SALE_DISCOUNT_OVERRIDE` la autorización es el propio cajero y `discount_authorized_by` guarda su id. Sin el privilegio, hace falta `authorization` (usuario y contraseña de un jefe), que se valida con `ActionAuthorizer`; una contraseña errónea cuenta para el bloqueo de la cuenta (`AUTHORIZATION_DENIED`). Sin autorización: `DISCOUNT_AUTHORIZATION_REQUIRED`.
+- La cotización informa `discountAuthorizationRequired` para que la pantalla pida la autorización antes de cobrar.
+- Las esperas no piden autorización: se revisa al cobrar. Así una espera nunca necesita al jefe.
+
+**Cobro.**
+
+- Pagos: la suma de `amount` debe ser igual al total exacto (`PAYMENTS_DO_NOT_MATCH_TOTAL`). Cada método debe existir y estar activo; si `requires_reference` pide referencia; `amountReceived` solo con métodos que dan vuelto, y nunca menor que el monto. `change_due` = suma de `amountReceived − amount`. `cardLast4` son exactamente cuatro dígitos; el número completo nunca se recibe ni se guarda.
+- Idempotencia: `idempotency_key` es único. El cobro busca la clave antes y después de bloquear el correlativo de la caja. Si la clave existe devuelve la venta con 200 y no crea nada; si no, crea la venta con 201.
+- Correlativo: `cash_register_counter` se bloquea con `SELECT … FOR UPDATE` mientras se cobra. El recibo es el prefijo de la caja más el número con 8 dígitos. Dos cobros de una misma caja no pueden recibir el mismo número.
+- Número interno: `sale_internal_number_seq`, que existe aunque la venta no se pague.
+- Venta en espera que se cobra (`holdId`): es la misma venta. Sus líneas se reemplazan con las de la petición, pasa a `PAID` y conserva su número interno.
+- Auditoría: `SALE_PAID`, en la misma transacción. No registra ni contraseñas ni números de tarjeta.
+
+**Esperas.**
+
+- Una espera es una venta `ON_HOLD` de la caja de la sesión abierta. No tiene recibo, pagos ni clave de idempotencia.
+- El listado y las operaciones por id son de la caja de la sesión abierta del cajero, no de una sesión concreta: una espera sobrevive al cierre de su sesión y la puede retomar quien abra la misma caja después. Sin sesión abierta, el listado está vacío y el resto responde `NO_OPEN_SESSION`.
+- `DELETE /api/v1/sales/holds/{id}` borra de verdad la espera. No es una anulación: una espera no es documento todavía, porque no se cobró nada. Una venta cobrada no se borra nunca; se anulará en 3B.
+
+**Consulta y ticket.**
+
+- Las lecturas siguen `BranchScope`: la tienda ve las ventas de su sucursal y la central todas. Una venta que el nodo no ve responde 404.
+- Listado: filtros `status`, `cashSessionId`, `cashierId`, `from` y `to` (sobre la fecha de creación), del más reciente al más antiguo.
+- El ticket solo existe para ventas cobradas (`SALE_NOT_PAID`). La fecha y la hora van en la zona horaria de la empresa, y el ticket trae el nombre del cajero.
+- `otherTaxableAmount` (tasas distintas de 0, 15 y 18) no tiene columna: es el total menos las demás bases y el ISV, así que cuadra exacto.
+
+**Privilegios** (`RoleDefaultsSeeder`, solo central, una vez por par rol-privilegio). Cajero: `POST_SALES_QUOTE`, `POST_SALES_HOLDS`, `GET_SALES_HOLDS`, `GET_SALES_HOLDS_ID`, `DELETE_SALES_HOLDS_ID`, `POST_SALES`, `GET_SALES_ID`, `GET_SALES_ID_TICKET`. Jefe de tienda: lo mismo más `GET_SALES`.
+
+**Pendiente y decisiones abiertas** (para revisar antes del paso 4):
+
+- **El cajero no tiene `GET_SALES`** (listado), tal como se pidió para este paso. El plan dice "ver sus ventas" y el menú "Ventas realizadas" del cajero ya existe (paso 1), así que hoy vería el menú y recibiría 403 en el listado. Hay que decidir: darle `GET_SALES` (y filtrar por `cashierId` en el servidor) o quitarle el menú.
+- **`sale_internal_number_seq` no se ajusta al rango del nodo.** `IdRangeSequenceAdjuster` solo mueve las columnas identity. Como el número interno es único en la central, el paso 4 debe ajustarlo al rango de la tienda antes de subir ventas.
+- **La cotización y la espera no piden autorización** (ver "Descuentos"). Si el responsable prefiere que la espera también la pida, se cambia en `SaleService.createHold`.
+- **La cotización es de tienda** (`@StoreOnly`), porque usa la sucursal de la tienda para el precio. En la central responde 403.
+- **Cierre de caja y métodos de pago**: el cierre no valida que el código contado exista, como se acordó en el paso 2 (caja no depende de ventas).
+- **Primer cobro de una caja con dos peticiones simultáneas con la misma clave**: la fila de `cash_register_counter` aún no existe y las dos la intentan crear; una falla por llave primaria. Es raro. Se corrige creando la fila al abrir la caja.
+- **Prefijo de recibos único**: sigue pendiente desde el paso 1. `receipt_number` es `UNIQUE`, así que dos cajas con el mismo prefijo darían error al cobrar en vez de recibos repetidos sin aviso.
+- **Sin pruebas** (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.

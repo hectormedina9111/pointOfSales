@@ -2231,6 +2231,158 @@
             "body": "{\n  \"counts\": [\n    { \"paymentMethodCode\": \"CASH\", \"amount\": 550.00 }\n  ],\n  \"notes\": \"Arqueo de prueba\"\n}"
           },
           "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Cotizar venta con descuento del 5 %",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/sales/quote",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"lines\": [\n    {\n      \"productId\": \"<<productId>>\",\n      \"quantity\": 1\n    }\n  ],\n  \"discountType\": \"PERCENTAGE\",\n  \"discountValue\": 5\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Guardar venta en espera",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/sales/holds",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"holdId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"lines\": [\n    {\n      \"productId\": \"<<productId>>\",\n      \"quantity\": 2\n    }\n  ],\n  \"notes\": \"Cliente vuelve por el producto\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar ventas en espera de la caja",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/sales/holds",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Cobrar en efectivo con vuelto (total 115.00, recibe 200.00)",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/sales",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"saleId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"lines\": [\n    {\n      \"productId\": \"<<productId>>\",\n      \"quantity\": 1\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethodCode\": \"CASH\",\n      \"amount\": 115.0,\n      \"amountReceived\": 200.0\n    }\n  ],\n  \"idempotencyKey\": \"demo-efectivo-0001\",\n  \"notes\": \"Pruebe con un producto de precio L 115.00; el vuelto debe ser 85.00\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Cobrar en efectivo y tarjeta (115.00 = 100.00 + 15.00)",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/sales",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"saleId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"lines\": [\n    {\n      \"productId\": \"<<productId>>\",\n      \"quantity\": 1\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethodCode\": \"CASH\",\n      \"amount\": 100.0\n    },\n    {\n      \"paymentMethodCode\": \"CARD\",\n      \"amount\": 15.0,\n      \"reference\": \"AUT-482913\",\n      \"cardLast4\": \"4242\"\n    }\n  ],\n  \"idempotencyKey\": \"demo-mixto-0001\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Repetir el cobro con la misma clave (responde 200, no crea otra venta)",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/sales",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"lines\": [\n    {\n      \"productId\": \"<<productId>>\",\n      \"quantity\": 1\n    }\n  ],\n  \"payments\": [\n    {\n      \"paymentMethodCode\": \"CASH\",\n      \"amount\": 115.0,\n      \"amountReceived\": 200.0\n    }\n  ],\n  \"idempotencyKey\": \"demo-efectivo-0001\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Consultar venta",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/sales/<<saleId>>",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Ticket de la venta (datos para imprimir)",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/sales/<<saleId>>/ticket",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
         }
       ],
       "auth": {

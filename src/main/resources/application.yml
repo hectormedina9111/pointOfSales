@@ -58,6 +58,9 @@ pos:
     dev-activation-codes: ${POS_DEV_ACTIVATION_CODES:}
     # Central: cuándo se purga el registro de cambios (cron de Spring, por defecto todos los días a las 03:00).
     purge-cron: "${POS_SYNC_PURGE_CRON:0 0 3 * * *}"
+  sales:
+    # Descuento máximo (%) que el cajero da sin autorización del jefe de tienda (por línea y por venta).
+    max-discount-percent: ${POS_SALES_MAX_DISCOUNT_PERCENT:10}
 
 management:
   endpoints:
