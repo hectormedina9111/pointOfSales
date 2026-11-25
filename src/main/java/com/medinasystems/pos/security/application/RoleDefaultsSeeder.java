@@ -47,6 +47,7 @@ public class RoleDefaultsSeeder implements ApplicationRunner {
             "POST_CASH_SESSIONS_ID_MOVEMENTS", "GET_CASH_SESSIONS_ID_SUMMARY", "POST_CASH_SESSIONS_ID_CLOSE",
             "POST_SALES_QUOTE", "POST_SALES_HOLDS", "GET_SALES_HOLDS", "GET_SALES_HOLDS_ID", "DELETE_SALES_HOLDS_ID",
             "POST_SALES", "GET_SALES_ID", "GET_SALES_ID_TICKET",
+            "MENU_CUSTOMERS", "GET_CUSTOMERS", "GET_CUSTOMERS_ID", "POST_CUSTOMERS",
             // The lists show the cashier's own documents: see ACTION_SALES_VIEW_ALL in the sales and cash services.
             "GET_SALES", "GET_CASH_SESSIONS");
 
