@@ -37,9 +37,12 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
     public record TicketBranch(String name, String address) {
     }
 
-    /** A ticket line: the description, the quantity, the unit price, the discount and the total with tax. */
+    /**
+     * A ticket line: the description, the quantity, the unit price, the discount, the total with tax and, for a product
+     * that tracks serial numbers, the serial numbers of its units.
+     */
     public record TicketLine(String description, BigDecimal quantity, BigDecimal unitPrice, BigDecimal discount,
-                             BigDecimal total) {
+                             BigDecimal total, List<String> serialNumbers) {
     }
 
     public static TicketView of(Sale sale, CompanyInfo company, BranchInfo branch, CashRegisterInfo register,
@@ -61,7 +64,8 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
                 customer.documentNumber(),
                 sale.getOrderType(),
                 sale.getLines().stream().map(line -> new TicketLine(line.getDescription(), line.getQuantity(),
-                        line.getUnitPrice(), line.getDiscountAmount(), line.getTotal())).toList(),
+                        line.getUnitPrice(), line.getDiscountAmount(), line.getTotal(), line.getSerialNumbers()))
+                        .toList(),
                 SaleTotalsView.from(sale),
                 sale.getPayments().stream().map(payment -> PaymentView.from(payment, creditNoteNumbers)).toList(),
                 sale.getChangeDue(),

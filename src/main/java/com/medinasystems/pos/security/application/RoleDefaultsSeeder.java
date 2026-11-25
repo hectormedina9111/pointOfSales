@@ -51,15 +51,16 @@ public class RoleDefaultsSeeder implements ApplicationRunner {
             "GET_SALES_ID_RETURNABLE", "POST_SALES_ID_RETURN_QUOTE", "POST_SALES_ID_RETURNS", "GET_SALES_RETURNABLE_LOOKUP",
             "MENU_CREDIT_NOTES", "GET_CREDIT_NOTES", "GET_CREDIT_NOTES_ID", "GET_CREDIT_NOTES_LOOKUP",
             "MENU_CUSTOMERS", "GET_CUSTOMERS", "GET_CUSTOMERS_ID", "POST_CUSTOMERS",
-            // The sale screen shows the stock of a product: read only.
+            // The sale screen shows the stock of a product and asks for its serial numbers: read only.
             "GET_INVENTORY", "GET_INVENTORY_PRODUCTID_BRANCHES_BRANCHID", "GET_INVENTORY_AVAILABILITY",
+            "MENU_INVENTORY", "MENU_INVENTORY_SERIALS", "GET_PRODUCTS_ID_SERIALS", "GET_SERIALS",
             // The lists show the cashier's own documents: see ACTION_SALES_VIEW_ALL in the sales and cash services.
             "GET_SALES", "GET_CASH_SESSIONS");
 
     private static final List<String> WAREHOUSE_CLERK_PRIVILEGES = List.of(
-            "MENU_INVENTORY", "MENU_INVENTORY_STOCK", "MENU_INVENTORY_DOCUMENTS",
+            "MENU_INVENTORY", "MENU_INVENTORY_STOCK", "MENU_INVENTORY_DOCUMENTS", "MENU_INVENTORY_SERIALS",
             "GET_INVENTORY", "GET_INVENTORY_PRODUCTID_BRANCHES_BRANCHID", "GET_INVENTORY_AVAILABILITY",
-            "GET_INVENTORY_MOVEMENTS",
+            "GET_INVENTORY_MOVEMENTS", "GET_PRODUCTS_ID_SERIALS", "GET_SERIALS",
             "GET_INVENTORY_DOCUMENTS", "GET_INVENTORY_DOCUMENTS_ID", "POST_INVENTORY_DOCUMENTS",
             "GET_PRODUCTS", "GET_PRODUCTS_ID", "GET_CATEGORIES", "GET_BRANCHES");
 
