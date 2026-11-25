@@ -135,7 +135,7 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 
 ### Organización y auditoría
 
-- Países, empresa y sucursales: `GET/POST/PUT /api/v1/countries`, `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches`.
+- Países, empresa y sucursales: `GET/POST/PUT /api/v1/countries`, `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches`. Cada central atiende un solo país: un segundo `POST /api/v1/countries` responde 422 `SINGLE_COUNTRY_ONLY`.
 - La visibilidad de sucursales depende del nodo, no del usuario: la central ve todas las sucursales y cada tienda solo la que le asignó la central (`store_identity.branch_id`). Una sucursal que el nodo no ve responde 404. La tabla `user_branch` solo decide en qué tienda puede iniciar sesión cada usuario: el administrador asigna las tiendas con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
 - En una tienda, los endpoints de escritura de datos maestros responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
 - Cada alta y cambio de datos maestros queda en `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`).

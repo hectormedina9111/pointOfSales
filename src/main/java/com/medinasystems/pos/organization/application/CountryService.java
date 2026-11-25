@@ -39,6 +39,10 @@ public class CountryService {
     }
 
     public CountryView create(CountryData data) {
+        if (countries.count() > 0) {
+            throw new BusinessRuleException("SINGLE_COUNTRY_ONLY",
+                    "Only one country can be configured: each central server serves one country.");
+        }
         Country country = new Country(data.isoCode(), data.name(), data.currency(), data.timeZone(),
                 data.taxIdLabel(), data.fiscalProvider());
         if (countries.existsByIsoCode(country.getIsoCode())) {

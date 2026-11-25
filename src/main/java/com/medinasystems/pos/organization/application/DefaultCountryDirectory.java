@@ -37,4 +37,10 @@ public class DefaultCountryDirectory implements CountryDirectory {
     public Optional<ZoneId> timeZoneOf(long countryId) {
         return countries.findById(countryId).map(country -> ZoneId.of(country.getTimeZone()));
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Long> defaultCountryId() {
+        return countries.findFirstByOrderByIdAsc().map(Country::getId);
+    }
 }
