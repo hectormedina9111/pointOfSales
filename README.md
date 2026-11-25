@@ -74,6 +74,7 @@ La colección no cubre todo. Los casos que faltan (por ejemplo, un MANAGER al qu
 ### 6. Sincronización y corte de internet
 
 Cada 30 segundos (y 15 segundos después del arranque), cada tienda pide a la central los cambios de datos maestros desde la última versión que aplicó. La primera vez carga una copia completa. La tienda siempre llama a la central; la central nunca la llama.
+Los países no se replican: existen solo en la central, y las tiendas usan la zona horaria de la empresa para la fecha de negocio.
 
 Cada ciclo empieza subiendo a la central lo que la tienda tenía pendiente. Hoy eso son los cambios de contraseña hechos en la tienda (`POST /api/v1/me/password` funciona en la tienda): se aplican en la tienda al momento y se suben a la central, que conserva el cambio más reciente y lo replica a todas las tiendas. Si la central no responde, el ciclo se detiene antes de bajar cambios, para que una contraseña vieja no pise la nueva. El latido informa cuántos envíos quedan pendientes (`pendingUploadCount`), y el panel de tiendas (`GET /api/v1/store-nodes`) lo muestra.
 

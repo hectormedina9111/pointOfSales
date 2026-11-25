@@ -993,11 +993,11 @@ Cajas, inventario y seriales, clientes, ventas, recibos, caja, facturación fisc
 
 ### Tablas del MVP
 
-Son 19 de las 40 tablas, con los mismos campos del Modelo de datos. Existen en la central y en cada tienda; en la tienda, todas salvo store\_node y audit\_log son copias de solo lectura que llegan por sincronización.
+Son 19 de las 40 tablas, con los mismos campos del Modelo de datos. Existen en la central y en cada tienda; en la tienda, todas salvo store\_node, audit\_log y country son copias de solo lectura que llegan por sincronización; country existe en la tienda pero no recibe filas nuevas (ver la decisión del paso 6B).
 
 | Módulo | Tablas |
 | --- | --- |
-| Organización | `country`, `company`, `branch` |
+| Organización | `company`, `branch` |
 | Seguridad | `app_user`, `role`, `user_role`, `user_branch`, `privilege`, `role_privilege` |
 | Catálogo | `category`, `unit_of_measure`, `tax`, `product`, `product_tax` |
 | Precios | `price_list`, `price_list_item` |
@@ -1475,7 +1475,8 @@ Alcance: la central registra los cambios de datos maestros, sirve la carga inici
 
 **Registro de tablas (`sync/domain/SyncTables`)**
 
-- Orden de las tablas principales: `country`, `company`, `role`, `privilege`, `app_user`, `branch`, `category`, `unit_of_measure`, `tax`, `product`, `product_tax`, `price_list`, `price_list_item`. Después van las hijas: `user_role`, `user_branch`, `role_privilege`.
+- Orden de las tablas principales: `company`, `role`, `privilege`, `app_user`, `branch`, `category`, `unit_of_measure`, `tax`, `product`, `product_tax`, `price_list`, `price_list_item`. Después van las hijas: `user_role`, `user_branch`, `role_privilege`.
+- Decisión del 24 de noviembre de 2026: los países no se replican; solo existen en la central para configurar sucursales, impuestos y listas de precios. Las tiendas conservan los ids de país en sus filas y usan la zona horaria de la empresa para la fecha de negocio. La migración `V12__countries_central_only.sql` quita el trigger y los registros de `country` del log; las filas de país que ya llegaron a las tiendas se quedan, porque `branch`, `tax`, `price_list` y `product_tax` tienen clave foránea a ellas.
 - Los nombres son constantes en el código. Lo que llega en una petición solo se compara contra el registro, nunca entra al SQL.
 
 **Formato de las filas**
@@ -1559,7 +1560,7 @@ Alcance: datos iniciales, fecha de negocio, orden de confirmación y purga del r
 
 **Fecha de negocio**
 
-- Sin `date`, `GET /products/{id}/price` usa el día de hoy en la zona horaria del país de la lista (o, sin lista, de la sucursal). Honduras es UTC-6, así que cerca de medianoche el día UTC ya no coincide con el de la caja. Si el país no existe, se usa UTC.
+- Sin `date`, `GET /products/{id}/price` usa el día de hoy en la zona horaria del país de la lista (o, sin lista, de la sucursal). Honduras es UTC-6, así que cerca de medianoche el día UTC ya no coincide con el de la caja. Si el país no existe (en una tienda, que no recibe países), se usa la zona horaria de la empresa y, si tampoco hay empresa, UTC.
 - La caja puede seguir enviando `date` explícito, que tiene prioridad.
 
 **Orden de confirmación del registro (`V10__sync_commit_order.sql`)**

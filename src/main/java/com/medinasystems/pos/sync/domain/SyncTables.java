@@ -14,7 +14,6 @@ import java.util.Optional;
 public final class SyncTables {
 
     private static final List<SyncTable> ALL = List.of(
-            SyncTable.main("country"),
             SyncTable.main("company"),
             SyncTable.main("role"),
             SyncTable.main("privilege"),

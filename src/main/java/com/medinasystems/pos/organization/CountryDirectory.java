@@ -15,6 +15,9 @@ public interface CountryDirectory {
     /** Id of the country with this ISO code (for example "HN"), active or not. Empty when there is none. */
     Optional<Long> findIdByIsoCode(String isoCode);
 
-    /** Time zone of the country, used to decide what "today" means for it. Empty when the country does not exist. */
+    /**
+     * Time zone of the country, used to decide what "today" means for it. Stores do not replicate countries, so when
+     * the country row is missing the time zone of the company is used. Empty when neither exists.
+     */
     Optional<ZoneId> timeZoneOf(long countryId);
 }
