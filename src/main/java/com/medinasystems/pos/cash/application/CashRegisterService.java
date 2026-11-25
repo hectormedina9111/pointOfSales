@@ -11,8 +11,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medinasystems.pos.cash.domain.CashRegister;
+import com.medinasystems.pos.cash.domain.CashSessionStatus;
 import com.medinasystems.pos.cash.infrastructure.CashRegisterRepository;
 import com.medinasystems.pos.cash.infrastructure.CashRegisterSpecifications;
+import com.medinasystems.pos.cash.infrastructure.CashSessionRepository;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BranchScope;
@@ -28,13 +30,15 @@ import com.medinasystems.pos.shared.ResourceNotFoundException;
 public class CashRegisterService {
 
     private final CashRegisterRepository registers;
+    private final CashSessionRepository sessions;
     private final BranchDirectory branches;
     private final BranchScope scope;
     private final ApplicationEventPublisher events;
 
-    public CashRegisterService(CashRegisterRepository registers, BranchDirectory branches, BranchScope scope,
-                               ApplicationEventPublisher events) {
+    public CashRegisterService(CashRegisterRepository registers, CashSessionRepository sessions,
+                               BranchDirectory branches, BranchScope scope, ApplicationEventPublisher events) {
         this.registers = registers;
+        this.sessions = sessions;
         this.branches = branches;
         this.scope = scope;
         this.events = events;
@@ -82,6 +86,11 @@ public class CashRegisterService {
         CashRegister register = find(id);
         if (!Objects.equals(register.getBranchId(), data.branchId())) {
             requireBranch(data.branchId());
+            // An open session belongs to the register's branch: moving the register would split its cash.
+            if (sessions.existsByCashRegisterIdAndStatus(id, CashSessionStatus.OPEN)) {
+                throw new BusinessRuleException("CASH_REGISTER_HAS_OPEN_SESSION",
+                        "The branch of a cash register with an open session cannot be changed");
+            }
         }
         requireUniqueCode(data.branchId(), data.code(), id);
         Map<String, Object> before = snapshot(register);

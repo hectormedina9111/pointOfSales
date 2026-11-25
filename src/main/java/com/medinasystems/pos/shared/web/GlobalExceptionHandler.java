@@ -25,6 +25,7 @@ import com.medinasystems.pos.shared.BusinessConflictException;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ReadOnlyNodeException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
+import com.medinasystems.pos.shared.StoreOnlyOperationException;
 
 /**
  * Maps shared exceptions to RFC 9457 problem details. Standard Spring MVC
@@ -80,6 +81,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 messages.getMessage("error.READ_ONLY_NODE", null, LocaleContextHolder.getLocale()));
         problem.setTitle(messages.getMessage("title.READ_ONLY_NODE", null, LocaleContextHolder.getLocale()));
         problem.setProperty("code", "READ_ONLY_NODE");
+        return problem;
+    }
+
+    @ExceptionHandler(StoreOnlyOperationException.class)
+    public ProblemDetail handleStoreOnly(StoreOnlyOperationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,
+                messages.getMessage("error.STORE_ONLY_OPERATION", null, LocaleContextHolder.getLocale()));
+        problem.setTitle(messages.getMessage("title.STORE_ONLY_OPERATION", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", "STORE_ONLY_OPERATION");
         return problem;
     }
 
