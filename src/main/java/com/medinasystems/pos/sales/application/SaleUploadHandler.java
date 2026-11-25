@@ -160,7 +160,7 @@ public class SaleUploadHandler implements UploadHandler {
                 jdbc.update("INSERT INTO credit_note (" + CREDIT_NOTE_COLUMNS + ") VALUES (" + placeholders(15) + ")",
                         creditNoteRow(note, receivedAt));
             }
-            applyReturn(payload, receivedAt);
+            applyReturn(storeNodeId, payload, receivedAt);
         }
         return UploadOutcome.accepted();
     }
@@ -180,9 +180,9 @@ public class SaleUploadHandler implements UploadHandler {
     }
 
     /**
-     * A return needs its original sale and its original lines on this node, and each returned quantity must still fit in
-     * the original line. Only this integrity check is made: the business rules were checked by the store. Null when the
-     * return can be written.
+     * A return needs its original sale and its original lines on this node. The business rules were checked by the store,
+     * and the returned quantity is not checked against the line here: a return made offline can meet another one, and
+     * {@link #applyReturn} caps the quantity and records the excess. Null when the return can be written.
      */
     private UploadOutcome checkReturn(JsonNode payload) {
         Long originalSaleId = optionalLong(payload, "originalSaleId");
@@ -203,14 +203,8 @@ public class SaleUploadHandler implements UploadHandler {
             if (rows.isEmpty()) {
                 return UploadOutcome.retry("ORIGINAL_LINE_MISSING");
             }
-            Map<String, Object> row = rows.get(0);
-            if (((Number) row.get("sale_id")).longValue() != originalSaleId) {
+            if (((Number) rows.get(0).get("sale_id")).longValue() != originalSaleId) {
                 return UploadOutcome.rejected("INVALID_PAYLOAD");
-            }
-            BigDecimal quantity = (BigDecimal) row.get("quantity");
-            BigDecimal returned = (BigDecimal) row.get("returned_quantity");
-            if (returned.add(decimal(line, "quantity")).compareTo(quantity) > 0) {
-                return UploadOutcome.rejected("RETURN_QUANTITY_EXCEEDED");
             }
         }
         return null;
@@ -218,17 +212,36 @@ public class SaleUploadHandler implements UploadHandler {
 
     /**
      * Moves the returned quantities onto the original lines and sets the status of the original sale: RETURNED when every
-     * line is fully returned, PARTIALLY_RETURNED otherwise. Both are increments and derived values, so the order of the
-     * uploads does not matter as long as the original sale is already here.
+     * line is fully returned, PARTIALLY_RETURNED otherwise. When the returned quantity would pass the line quantity (an
+     * offline return met another one), the line is capped at its quantity and the excess is recorded in
+     * {@code sale_return_conflict} for review; the document itself is accepted. The claims of the return are confirmed.
      */
-    private void applyReturn(JsonNode payload, Instant receivedAt) {
+    private void applyReturn(long storeNodeId, JsonNode payload, Instant receivedAt) {
         Timestamp now = Timestamp.from(receivedAt);
+        long returnSaleId = longField(payload, "id");
         long originalSaleId = optionalLong(payload, "originalSaleId");
         String by = text(payload, "createdBy");
+        String claimKey = text(payload, "idempotencyKey");
         for (JsonNode line : array(payload, "lines")) {
-            jdbc.update("UPDATE sale_line SET returned_quantity = returned_quantity + ?, updated_at = ?, updated_by = ?,"
-                    + " version = version + 1 WHERE id = ?", decimal(line, "quantity"), now, by,
-                    optionalLong(line, "originalLineId"));
+            long originalLineId = optionalLong(line, "originalLineId");
+            Map<String, Object> row = jdbc.queryForMap(
+                    "SELECT quantity, returned_quantity FROM sale_line WHERE id = ? FOR UPDATE", originalLineId);
+            BigDecimal quantity = (BigDecimal) row.get("quantity");
+            BigDecimal returned = ((BigDecimal) row.get("returned_quantity")).add(decimal(line, "quantity"));
+            BigDecimal excess = returned.subtract(quantity).max(BigDecimal.ZERO);
+            jdbc.update("UPDATE sale_line SET returned_quantity = ?, updated_at = ?, updated_by = ?,"
+                    + " version = version + 1 WHERE id = ?", returned.min(quantity), now, by, originalLineId);
+            if (excess.signum() > 0) {
+                jdbc.update("INSERT INTO sale_return_conflict (sale_id, sale_line_id, return_sale_id, store_node_id,"
+                        + " excess_quantity, created_at, created_by, updated_at, updated_by, version)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)", originalSaleId, originalLineId, returnSaleId,
+                        storeNodeId, excess, now, by, now, by);
+                log.info("Return {} exceeds line {} by {}: recorded as a conflict", returnSaleId, originalLineId,
+                        excess);
+            }
+            jdbc.update("UPDATE sale_return_claim SET status = 'CONFIRMED', return_sale_id = ?, updated_at = ?,"
+                    + " updated_by = ?, version = version + 1 WHERE claim_key = ? AND sale_line_id = ?",
+                    returnSaleId, now, by, claimKey, originalLineId);
         }
         jdbc.update("UPDATE sale SET status = CASE WHEN EXISTS (SELECT 1 FROM sale_line WHERE sale_id = ?"
                 + " AND returned_quantity < quantity) THEN 'PARTIALLY_RETURNED' ELSE 'RETURNED' END,"
