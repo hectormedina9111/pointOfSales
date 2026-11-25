@@ -159,6 +159,16 @@ public class SaleController {
         return returns.returnable(id);
     }
 
+    /**
+     * The returnable view of a sale found by its receipt number: a sale of this store's branch, or a sale of another branch
+     * when this branch accepts such returns (the central node answers then). The store must be online for the second case.
+     */
+    @GetMapping("/returnable-lookup")
+    @StoreOnly
+    public ReturnableView returnableLookup(@RequestParam String receiptNumber) {
+        return returns.lookup(receiptNumber);
+    }
+
     /** The amounts a return of these lines would refund. Stores nothing and needs no authorization. */
     @PostMapping("/{id}/return-quote")
     @StoreOnly

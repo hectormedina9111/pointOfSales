@@ -42,6 +42,10 @@ public class Branch extends AuditableEntity {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** True when the branch accepts returns of sales made in other branches. Only the central node changes it. */
+    @Column(name = "accepts_foreign_returns", nullable = false)
+    private boolean acceptsForeignReturns;
+
     /** Plain column: the price list table arrives in step 5, which adds the foreign key. */
     @Column(name = "default_price_list_id")
     private Long defaultPriceListId;
@@ -50,7 +54,8 @@ public class Branch extends AuditableEntity {
     }
 
     public Branch(Company company, Country country, String code, String name, String address, String phone,
-                  boolean allowNegativeStock, boolean active, Long defaultPriceListId) {
+                  boolean allowNegativeStock, boolean active, Long defaultPriceListId,
+                  boolean acceptsForeignReturns) {
         this.company = Objects.requireNonNull(company, "company is required");
         this.country = requireActiveCountry(country);
         this.code = code;
@@ -60,6 +65,7 @@ public class Branch extends AuditableEntity {
         this.allowNegativeStock = allowNegativeStock;
         this.active = active;
         this.defaultPriceListId = defaultPriceListId;
+        this.acceptsForeignReturns = acceptsForeignReturns;
     }
 
     /**
@@ -67,7 +73,8 @@ public class Branch extends AuditableEntity {
      * even if that country was deactivated later.
      */
     public void update(Country newCountry, String code, String name, String address, String phone,
-                       boolean allowNegativeStock, boolean active, Long defaultPriceListId) {
+                       boolean allowNegativeStock, boolean active, Long defaultPriceListId,
+                       boolean acceptsForeignReturns) {
         if (newCountry != this.country) {
             this.country = requireActiveCountry(newCountry);
         }
@@ -78,6 +85,7 @@ public class Branch extends AuditableEntity {
         this.allowNegativeStock = allowNegativeStock;
         this.active = active;
         this.defaultPriceListId = defaultPriceListId;
+        this.acceptsForeignReturns = acceptsForeignReturns;
     }
 
     private static Country requireActiveCountry(Country country) {
@@ -122,5 +130,9 @@ public class Branch extends AuditableEntity {
 
     public Long getDefaultPriceListId() {
         return defaultPriceListId;
+    }
+
+    public boolean isAcceptsForeignReturns() {
+        return acceptsForeignReturns;
     }
 }

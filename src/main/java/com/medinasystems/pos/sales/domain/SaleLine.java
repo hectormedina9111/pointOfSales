@@ -93,25 +93,25 @@ public class SaleLine extends AuditableEntity {
     }
 
     /** A line of a return: the product, price and tax are copied from the original line, the amounts are refunded ones. */
-    SaleLine(Sale sale, int lineNumber, SaleLine original, CalculatedReturnLine calculated) {
+    SaleLine(Sale sale, int lineNumber, ReturnSourceLine original, CalculatedReturnLine calculated) {
         this.sale = sale;
         this.lineNumber = (short) lineNumber;
-        this.productId = original.productId;
-        this.sku = original.sku;
-        this.description = original.description;
+        this.productId = original.productId();
+        this.sku = original.sku();
+        this.description = original.description();
         this.quantity = calculated.quantity();
-        this.unitPrice = original.unitPrice;
-        this.unitCost = original.unitCost;
+        this.unitPrice = original.unitPrice();
+        this.unitCost = original.unitCost();
         this.discountAmount = Money.ZERO;
-        this.taxCode = original.taxCode;
-        this.taxRate = original.taxRate;
+        this.taxCode = original.taxCode();
+        this.taxRate = original.taxRate();
         this.taxAmount = calculated.taxAmount();
         this.subtotal = calculated.subtotal();
         this.total = calculated.total();
-        this.priceListId = original.priceListId;
-        this.listPrice = original.listPrice;
-        this.priceOverridden = original.priceOverridden;
-        this.originalLineId = original.getId();
+        this.priceListId = original.priceListId();
+        this.listPrice = original.listPrice();
+        this.priceOverridden = original.priceOverridden();
+        this.originalLineId = original.id();
     }
 
     /** Adds a quantity returned from this line. The caller has checked that it does not exceed what is left. */

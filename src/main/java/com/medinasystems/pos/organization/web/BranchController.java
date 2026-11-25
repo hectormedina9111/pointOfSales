@@ -64,11 +64,12 @@ public class BranchController {
                                 @NotNull Long countryId,
                                 @NotNull Boolean allowNegativeStock,
                                 @NotNull Boolean active,
-                                Long defaultPriceListId) {
+                                Long defaultPriceListId,
+                                Boolean acceptsForeignReturns) {
 
         BranchData toData() {
             return new BranchData(code, name, address, phone, countryId, allowNegativeStock, active,
-                    defaultPriceListId);
+                    defaultPriceListId, Boolean.TRUE.equals(acceptsForeignReturns));
         }
     }
 }

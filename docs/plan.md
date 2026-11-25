@@ -2151,7 +2151,7 @@ Este paso implementa "Orden y cobro" y, además, la garantía de que ningún id 
 **Subida a la central.** La devolución sube con el evento `SALE_PAID` (`type = RETURN`), con su nota de crédito en `creditNote` cuando existe. Sin pagos es válida solo para devoluciones. La central:
 
 - responde `RETRY` con `ORIGINAL_SALE_MISSING` u `ORIGINAL_LINE_MISSING` si la venta o sus líneas aún no llegaron;
-- responde `REJECTED` con `RETURN_QUANTITY_EXCEEDED` si la cantidad ya no cabe en la línea original. Es una comprobación de integridad para no violar el `CHECK` de la base, no una revalidación de negocio;
+- responde `REJECTED` con `RETURN_QUANTITY_EXCEEDED` si la cantidad ya no cabe en la línea original. Es una comprobación de integridad para no violar el `CHECK` de la base, no una revalidación de negocio. **Desde el paso 3 esto cambia:** la central ya no rechaza; topa la cantidad en la línea y registra el excedente como conflicto (ver "3B paso 3");
 - inserta la devolución, sus líneas, sus pagos y la nota de crédito (con `synced_at` = ahora), suma las cantidades a las líneas originales y recalcula el estado de la venta original (`RETURNED` o `PARTIALLY_RETURNED`).
 
 Los ids de la devolución, sus líneas, sus pagos y la nota de crédito se validan contra el rango de la tienda.
@@ -2219,3 +2219,30 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 - Si una venta con nota de crédito se cobra en la central, `CentralNodeGateway` lanza y la petición falla con 500. No se valida todavía.
 - La réplica de una tienda que vuelve a cargar la foto inicial borra las notas locales que aún no subieron (igual que los demás datos replicados). Revisar antes del piloto.
 - Sin compilar ni probar en esta sesión: `./mvnw verify` y el CI quedan para verificar.
+
+### Decisiones de implementación: 3B paso 3 (reservas y devoluciones en otra sucursal)
+
+**Migración V20.** `branch.accepts_foreign_returns` (la central la cambia y se replica con `branch`; en la API es opcional y `null` equivale a `false`). `sale_return_claim` se replica a todas las tiendas (disparador `main`). `sale_return_conflict` existe solo en la central y no se replica. La clave de la reserva es la clave de idempotencia de la devolución: no hay un campo `claimKey` aparte, porque el documento de la devolución ya la lleva como `idempotencyKey`.
+
+**Cantidad disponible (todos los nodos).** Disponible = cantidad − devuelta − reservada. "Reservada" suma las reservas `RESERVED` y `CONFIRMED` cuya devolución no está en los documentos del nodo (`NOT EXISTS` sobre `sale` con la clave de la devolución). Así una reserva no se cuenta dos veces: la devolución local ya suma en "devuelta". En la tienda de origen, las devoluciones confirmadas en otra tienda sí restan.
+
+**Montos.** La línea se liquida contra lo que el libro tiene (cantidad − devuelta), no contra lo disponible: "devolver todo lo que queda" reembolsa exactamente lo pendiente aunque haya reservas ajenas. Así, la cantidad reservada por otra tienda se reembolsa después, de forma proporcional y exacta al final.
+
+**Central (`ReturnClaimService`).** Bloquea la venta con `FOR UPDATE`, valida cada cantidad contra lo disponible (422 `RETURN_QUANTITY_EXCEEDED`) y escribe las reservas. Es idempotente por clave: una clave que ya retiene cantidad responde la vista actual. Liberar solo cambia `RESERVED` a `RELEASED` y devuelve el número liberado; una clave sin reservas es un no-op. Endpoints en `/api/v1/sync/sales/` (`GET returnable?receiptNumber=`, `GET {id}/returnable`, `POST {id}/return-claims`, `POST return-claims/{claimKey}/release`), con token de tienda y sin privilegio de usuario, como las notas de crédito. La liberación fallida va por la cola `RETURN_CLAIM_RELEASE` (`ReturnClaimReleaseUploadHandler`).
+
+**Subida de la devolución (`SaleUploadHandler`).** Ya no rechaza por cantidad. Topa `returned_quantity` en la cantidad de la línea, guarda el excedente en `sale_return_conflict` (con la venta, la línea, la devolución y la tienda) y confirma las reservas de su clave (`CONFIRMED`, `return_sale_id`). Acepta el documento, porque la central no revalida. Esto reemplaza la decisión del paso 1 sobre `RETURN_QUANTITY_EXCEEDED`.
+
+**Tienda (`SaleReturnService`).**
+- Búsqueda (`GET /api/v1/sales/returnable-lookup?receiptNumber=`, `@StoreOnly`): primero la venta propia, sin conexión; si no está y la sucursal acepta devoluciones ajenas, la central (503 `CENTRAL_UNAVAILABLE` si no responde); si no, `FOREIGN_RETURNS_DISABLED`.
+- Los endpoints de devolución (`returnable`, `return-quote`, `returns`) aceptan el id de una venta ajena. La vista viene de la central y el mismo día se decide con el reloj y la zona de la tienda, no con la de la central. Los montos usan el mismo `ReturnCalculator`.
+- Cada devolución reserva en la central antes de escribir. Para una venta ajena es obligatorio (sin conexión, `CENTRAL_UNAVAILABLE`, sin devolución). Para una venta propia es de mejor esfuerzo: sin conexión, o si la central aún no tiene la venta (404), la devolución sigue sin reserva y la central la acepta después.
+- La reserva se registra justo después de conseguirse. Si la transacción de la devolución no confirma, se libera: ahora, o por la cola si la central no responde.
+- `ReturnOrigin` guarda id, número y datos copiados de la venta original (cliente, tipo de orden). Una devolución de venta ajena no tiene venta local.
+
+**Panel de tiendas.** `StoreNodeMetrics` (interfaz de `sync`) la implementa `sales` (`SaleReturnConflicts`) y `StoreNodeView.returnConflicts` la expone. `sync` no depende de `sales`; `sales` ya dependía de `sync`, así que no hay ciclo entre módulos.
+
+**Privilegios.** `GET_SALES_RETURNABLE_LOOKUP` se concede al cajero (y al jefe, que hereda sus privilegios).
+
+**Mensajes.** Nuevos: `FOREIGN_RETURNS_DISABLED`, `SALE_NOT_FOUND`. `FOREIGN_SALE_RETURN` se retira. `INVALID_IDEMPOTENCY_KEY` ahora describe el envío a la central, porque ya lo usan también las devoluciones.
+
+**Sin compilar ni probar en esta sesión:** `./mvnw verify` y el CI quedan para verificar.

@@ -222,7 +222,7 @@ public class Sale extends AuditableEntity {
      *
      * @param refunds the refunds, with positive amounts; the sign comes from the type
      */
-    public static Sale refund(SaleContext context, long internalNumber, Sale original, ReturnTotals totals,
+    public static Sale refund(SaleContext context, long internalNumber, ReturnOrigin original, ReturnTotals totals,
                               String reason, RefundMethod refundMethod, Long authorizedBy, List<PaymentDraft> refunds,
                               String receiptNumber, String idempotencyKey, Instant paidAt) {
         Sale sale = new Sale();
@@ -233,11 +233,11 @@ public class Sale extends AuditableEntity {
         sale.cashRegisterId = context.cashRegisterId();
         sale.cashSessionId = context.cashSessionId();
         sale.cashierId = context.cashierId();
-        sale.customerId = original.customerId;
-        sale.orderType = original.orderType;
-        sale.exclusive = original.exclusive;
-        sale.originalSaleId = original.getId();
-        sale.originalReceiptNumber = original.receiptNumber;
+        sale.customerId = original.customerId();
+        sale.orderType = original.orderType();
+        sale.exclusive = original.exclusive();
+        sale.originalSaleId = original.saleId();
+        sale.originalReceiptNumber = original.receiptNumber();
         sale.reason = reason;
         sale.refundMethod = refundMethod;
         sale.returnAuthorizedBy = authorizedBy;

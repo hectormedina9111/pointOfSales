@@ -15,6 +15,7 @@ import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
+import com.medinasystems.pos.sync.StoreNodeMetrics;
 import com.medinasystems.pos.sync.domain.StoreNode;
 import com.medinasystems.pos.sync.infrastructure.StoreNodeRepository;
 import com.medinasystems.pos.sync.infrastructure.SyncDataReader;
@@ -27,14 +28,16 @@ public class StoreNodeService {
     private final StoreNodeRepository nodes;
     private final BranchDirectory branches;
     private final SyncDataReader changeLog;
+    private final StoreNodeMetrics metrics;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public StoreNodeService(StoreNodeRepository nodes, BranchDirectory branches, SyncDataReader changeLog,
-                            ApplicationEventPublisher events, Clock clock) {
+                            StoreNodeMetrics metrics, ApplicationEventPublisher events, Clock clock) {
         this.nodes = nodes;
         this.branches = branches;
         this.changeLog = changeLog;
+        this.metrics = metrics;
         this.events = events;
         this.clock = clock;
     }
@@ -43,7 +46,8 @@ public class StoreNodeService {
     public Page<StoreNodeView> list(Pageable pageable) {
         long latest = changeLog.latestVersion();
         Instant now = clock.instant();
-        return nodes.findAll(pageable).map(node -> StoreNodeView.from(node, latest, now));
+        return nodes.findAll(pageable).map(node -> StoreNodeView.from(node, latest, now,
+                metrics.returnConflicts(node.getId())));
     }
 
     @Transactional(readOnly = true)
@@ -117,7 +121,8 @@ public class StoreNodeService {
     }
 
     private StoreNodeView view(StoreNode node) {
-        return StoreNodeView.from(node, changeLog.latestVersion(), clock.instant());
+        return StoreNodeView.from(node, changeLog.latestVersion(), clock.instant(),
+                metrics.returnConflicts(node.getId()));
     }
 
     private StoreNode find(long id) {
