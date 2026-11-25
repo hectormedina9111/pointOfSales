@@ -88,6 +88,7 @@ public class MenuSeeder implements ApplicationRunner {
                     "device-desktop", 1),
             new MenuDefinition("MENU_PAYMENT_METHODS", "MENU_SALES_SETTINGS", "sales", "Métodos de pago",
                     "/sales/payment-methods", "credit-card", 2),
+            new MenuDefinition("MENU_CUSTOMERS", null, "customer", "Clientes", "/customers", "users", 60),
             new MenuDefinition("MENU_AUDIT", null, "audit", "Auditoría", "/audit", "history", 80));
 
     private final PrivilegeRepository privileges;
