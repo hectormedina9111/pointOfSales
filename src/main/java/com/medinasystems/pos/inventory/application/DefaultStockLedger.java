@@ -138,7 +138,9 @@ public class DefaultStockLedger implements StockLedger {
         BigDecimal after = before.add(quantity);
         boolean incoming = quantity.signum() > 0;
         if (!incoming && after.signum() < 0 && !branch.allowNegativeStock()) {
-            throw new BusinessRuleException("INSUFFICIENT_STOCK", "There is not enough stock of the product");
+            throw new BusinessRuleException("INSUFFICIENT_STOCK",
+                    "There is not enough stock of " + product.name() + " (SKU " + product.sku() + ")",
+                    product.sku(), product.name(), before.stripTrailingZeros().toPlainString());
         }
         BigDecimal average = item.getAverageCost();
         BigDecimal unitCost;
