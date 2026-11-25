@@ -159,12 +159,7 @@ public class InventoryDocumentService {
 
     /** The stock of each product the movements changed, as it is after the document. */
     private List<InventoryItem> resultingItems(List<StockMovement> moved, long branchId) {
-        Map<Long, InventoryItem> byProduct = new LinkedHashMap<>();
-        for (StockMovement movement : moved) {
-            byProduct.computeIfAbsent(movement.productId(), productId -> items.findByProductIdAndBranchId(productId,
-                    branchId).orElseThrow(() -> new IllegalStateException("The stock row of the product is missing")));
-        }
-        return new ArrayList<>(byProduct.values());
+        return ResultingStock.of(items, moved, branchId);
     }
 
     /**
