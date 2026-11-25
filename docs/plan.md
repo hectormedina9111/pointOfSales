@@ -586,7 +586,7 @@ Las listas se asignan con `branch.default_price_list_id` y `customer.price_list_
 | product\_id | BIGINT | FK product, NOT NULL |  |
 | serial\_number | VARCHAR(100) | NOT NULL; UNIQUE con product\_id | Serie, IMEI, etc. |
 | branch\_id | BIGINT | FK branch, NOT NULL | Sucursal donde está ahora |
-| status | VARCHAR(15) | NOT NULL | AVAILABLE, RESERVED, SOLD, RETURNED, DEFECTIVE, IN\_TRANSIT |
+| status | VARCHAR(15) | NOT NULL | AVAILABLE, SOLD, IN\_TRANSIT, REMOVED (ver "Decisiones de implementación: inventario paso 3") |
 | entry\_movement\_id | BIGINT | FK inventory\_movement | Movimiento con el que ingresó |
 | received\_at | TIMESTAMPTZ | NOT NULL |  |
 | sold\_at | TIMESTAMPTZ |  | Última venta |
@@ -737,7 +737,7 @@ Una devolución es una fila más de `sale` con `type = RETURN`: tiene sus propia
 | restock | BOOLEAN | Solo en RETURN, DEFAULT true | false si el producto vuelve dañado y no reingresa al inventario |
 | price\_list\_id | BIGINT | FK price\_list, NULL | Lista de la que salió el precio; NULL = precio base del producto |
 
-**sale\_line\_serial** (qué seriales salieron en cada línea): `id`, `sale_line_id` (FK sale\_line), `product_serial_id` (FK product\_serial), `returned BOOLEAN DEFAULT false`. UNIQUE (sale\_line\_id, product\_serial\_id). Al pagar, cada serial pasa a SOLD; al devolver, a RETURNED o DEFECTIVE.
+**sale\_line\_serial** (qué seriales salieron en cada línea): `id`, `sale_line_id` (FK sale\_line), `product_serial_id` (FK product\_serial), `returned BOOLEAN DEFAULT false`. UNIQUE (sale\_line\_id, product\_serial\_id). Al pagar, cada serial pasa a SOLD en el inventario; al devolver, `returned` pasa a true en la línea original. Ver "Decisiones de implementación: inventario paso 3".
 
 **payment\_method** (método de pago)
 
@@ -1501,7 +1501,7 @@ Decidido el 25 de noviembre de 2026. Cubre RF-12 a RF-16, RF-23 y RF-42. El cré
 - **Venta:** al cobrar, en la misma transacción, se descuenta la existencia (SALE_OUT) de cada producto inventariable; si no alcanza y la sucursal no lo permite, el cobro se rechaza con `INSUFFICIENT_STOCK`. La orden muestra la existencia al buscar productos.
 - **Devolución:** RETURN_IN siempre, en la sucursal que recibe la devolución, al costo promedio vigente de esa sucursal (no cambia el promedio).
 - **Alerta de mínimo:** `product.min_stock`; el listado de existencias filtra los productos bajo el mínimo y el inicio lo muestra.
-- **Seriales:** en productos con `tracks_serials = true` la entrada exige un serial por unidad (cantidades enteras); la venta exige escanear los seriales en la orden; la devolución elige qué seriales vuelven; la transferencia lleva sus seriales. Cada serial guarda su estado (AVAILABLE, SOLD, IN_TRANSIT, DEFECTIVE), sucursal y venta, y se puede rastrear por número. En una sucursal, los seriales disponibles coinciden con la existencia.
+- **Seriales:** en productos con `tracks_serials = true` la entrada exige un serial por unidad (cantidades enteras); la venta exige escanear los seriales en la orden; la devolución elige qué seriales vuelven; la transferencia lleva sus seriales. Cada serial guarda su estado (AVAILABLE, SOLD, IN_TRANSIT, REMOVED), sucursal y última venta, y se puede rastrear por número. En una sucursal, los seriales disponibles coinciden con la existencia.
 - **Transferencias:** la tienda de origen crea la transferencia (productos, cantidades y seriales) y descuenta (TRANSFER_OUT); queda EN TRÁNSITO. Al llegar por réplica, la tienda destino la recibe indicando lo recibido (TRANSFER_IN al costo de salida); si recibe menos, la diferencia queda registrada como faltante. Estados: IN_TRANSIT, RECEIVED, RECEIVED_WITH_DIFFERENCES.
 
 ### Pantallas
@@ -2356,3 +2356,38 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 - La disponibilidad consulta el catálogo producto por producto, porque el catálogo no tiene consulta por lote. Con 100 productos son 100 lecturas; si pesa, se agrega una consulta por lote al catálogo.
 - Los mensajes de respaldo del código siguen en inglés, como en los pasos anteriores; el texto visible sale de los archivos de mensajes.
 - Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (dependencias `inventory` → `sales`) y el CI quedan para verificar.
+
+### Decisiones de implementación: inventario paso 3 (seriales)
+
+**Migración V22.** Tablas `product_serial`, `inventory_movement_serial` y `sale_line_serial`. Desviaciones del modelo de "Inventario": `product_serial` no lleva `warranty_expires_at` ni `notes` (garantías y notas quedan para cuando se pidan); el estado es AVAILABLE, SOLD, IN_TRANSIT o REMOVED (DEFECTIVE sale del modelo: una baja por salida o conteo queda REMOVED); `entry_movement_id` y `last_sale_id` no tienen llave foránea, como pide el paso, porque la venta o el movimiento pueden vivir en otro nodo. `sale_line_serial` guarda solo el número de serie: ventas no tiene llave a inventario.
+
+**Un serial, una fila (entre nodos).** La unicidad `(product_id, serial_number)` vale en todo el sistema, pero cada tienda crea su propia fila con su propio id. Cuando una tienda recibe por devolución un serial que vendió otra, crea una fila nueva; la central ya tiene la de la tienda que vendió. Por eso la central no inserta por id: busca la fila por `(product_id, serial_number)`, y si existe la conserva y mapea el id subido a ese id; la fila solo cambia si el estado subido es más nuevo (`updated_at`). Los vínculos `inventory_movement_serial` se escriben con el id ya mapeado. Un serial que la central no conoce se inserta con el id de la tienda (está en su rango).
+
+**Ledger (`StockLedger`).** La firma recibe `serialNumbers` (vacía para productos sin serial). Un producto con serial mueve una unidad por serial:
+- Entrada, ajuste positivo y devolución (`RETURN_IN`): el serial no puede estar AVAILABLE ni IN_TRANSIT en ningún lado (`SERIAL_ALREADY_EXISTS`). Si no existe, se crea; si existe como SOLD o REMOVED, vuelve a entrar en esta sucursal. Así una devolución de otra sucursal y la reentrada de un serial dado de baja usan la misma regla.
+- Salida, ajuste negativo: el serial debe estar AVAILABLE en esta sucursal (`SERIAL_NOT_AVAILABLE`) y pasa a REMOVED.
+- Venta (`SALE_OUT`): el serial debe estar AVAILABLE en esta sucursal y pasa a SOLD con `sold_at` y `last_sale_id`.
+- La regla de existencia negativa no aplica a productos con serial: el serial debe existir. Cada movimiento enlaza sus seriales en `inventory_movement_serial`.
+- Conteo de un producto con serial: la lista son todas las unidades presentes. Lo disponible aquí y no listado sale en un movimiento negativo; lo listado que no está disponible aquí entra en otro positivo. Así cada movimiento tiene un serial por unidad, aunque el ajuste neto sea distinto de cero. El documento guarda la diferencia neta de la línea.
+
+**Cantidades y conteos.** Un producto con serial exige cantidad entera (`FRACTIONAL_SERIAL_QUANTITY`), un serial por unidad (`SERIALS_REQUIRED` si faltan, `SERIAL_COUNT_MISMATCH` si no cuadran) y no repetidos (`DUPLICATE_SERIAL`). Las reglas viven en `SerialNumbers` (`shared`, módulo abierto) para que inventario y ventas usen la misma. El `SERIALS_REQUIRED` del paso 1 se retira como rechazo general.
+
+**Ventas.** Las líneas de cotización no validan seriales (son un precio). Un borrador que se guarda en espera o se cobra sí valida: una unidad por serial, sin repetidos dentro de la venta. Las filas `sale_line_serial` se guardan con la línea y se reemplazan en el PUT de una orden en espera. La disponibilidad no se revisa al guardar la espera: el cobro la revisa en el ledger (`SALE_OUT`) y, si falla, revierte el cobro completo. **Sin consulta temprana `unavailableSerials`:** ventas llamaría a inventario, pero inventario ya escucha los eventos de ventas, así que sería un ciclo entre módulos (Spring Modulith). Se usa solo la validación al cobrar.
+
+**Devoluciones.** Cada línea de devolución trae sus seriales. Cada serial debe estar entre los `returnableSerialNumbers` de su línea original (vendido y no devuelto), o responde `SERIAL_NOT_FOUND`; el número de seriales debe igualar la cantidad. La calculadora (dominio) hace la comprobación, así que también la hace la cotización. La línea de devolución guarda sus seriales con `returned = true`; la línea original marca los suyos como devueltos al crear la devolución localmente, y la central los marca al recibir una devolución de otra sucursal.
+
+**Vistas.** `SaleLineView` lleva `serialNumbers` (vendidos) y `returnedSerialNumbers`. `ReturnableView.Line` lleva `tracksSerials`, `serialNumbers` y `returnableSerialNumbers`; la central los entrega igual, porque la vista se arma con el mismo código. `tracksSerials` se deduce de que la línea tenga filas de serial: una línea vendida antes de este paso no tiene filas y se devuelve como producto sin serial (limitación). El ticket muestra los seriales de cada línea.
+
+**Subida.** `INVENTORY_DOCUMENT` e `INVENTORY_MOVEMENTS` llevan `serials` (las unidades que tocaron sus movimientos) y `movementSerials` (los vínculos). La central valida que los ids estén en el rango de la tienda y que cada vínculo apunte a una unidad y a un movimiento del mismo documento (`INVALID_PAYLOAD`). `SALE_PAID` lleva en cada línea `serials` (`sale_line_serial`). La central inserta esas filas con sus ids y, en una devolución, marca `returned` en las filas originales de cada serial devuelto.
+
+**Consultas.** `GET /api/v1/products/{id}/serials` (`GET_PRODUCTS_ID_SERIALS`): páginas con filtros de sucursal, estado y búsqueda en la base de datos; la tienda ve su sucursal. `GET /api/v1/serials?serialNumber=&productId=` (`GET_SERIALS`): trazabilidad, coincidencia exacta sin distinguir mayúsculas; devuelve la lista de unidades con su última venta y sus movimientos. La tienda solo tiene sus propias filas, así que ve su sucursal; la central ve todas.
+
+**Privilegios y menús.** Menú `MENU_INVENTORY_SERIALS` (`/inventory/serials`, bajo Inventario). Cajero y bodeguero reciben `GET_PRODUCTS_ID_SERIALS`, `GET_SERIALS` y el menú; el cajero también recibe `MENU_INVENTORY` para que el menú se muestre.
+
+**Mensajes.** Nuevos en ambos archivos: `SERIAL_COUNT_MISMATCH`, `SERIAL_NOT_AVAILABLE`, `DUPLICATE_SERIAL`, `SERIAL_NOT_FOUND`, `FRACTIONAL_SERIAL_QUANTITY`, `SERIAL_ALREADY_EXISTS`. `SERIALS_REQUIRED` cambia de texto.
+
+**Pendiente y límites.**
+- Transferencias (`IN_TRANSIT`) y estado DEFECTIVE: no se implementan; el estado IN_TRANSIT existe en el modelo para la transferencia del paso 4.
+- Los seriales de un mismo producto que devuelven dos tiendas a la vez pueden pasar la validación local en ambas: la central solo marca las filas como devueltas, sin reservar seriales (las reservas de la devolución son por cantidad). Pendiente revisarlo con las reservas por serial.
+- Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → ventas sin ciclo) y el CI quedan para verificar.
+
