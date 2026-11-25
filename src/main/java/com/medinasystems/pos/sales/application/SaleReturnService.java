@@ -21,6 +21,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.medinasystems.pos.cash.OpenSessionInfo;
+import com.medinasystems.pos.sales.SaleReturned;
 import com.medinasystems.pos.customer.CustomerInfo;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
@@ -224,6 +225,7 @@ public class SaleReturnService {
         }
         events.publishEvent(AuditEvent.created("SALE_RETURNED", "sale", saved.getId(), returnedSnapshot(saved, note)));
         outbox.enqueue(SaleDocument.EVENT_TYPE, SaleDocument.of(saved, note));
+        events.publishEvent(new SaleReturned(saved.getId(), saved.getBranchId(), userId, returnedLines(saved)));
         return new SaleResult(service.view(saved), true);
     }
 
@@ -379,6 +381,13 @@ public class SaleReturnService {
     /** True when the instant falls on the same calendar day as now, in the zone. */
     private boolean sameDay(Instant paidAt, ZoneId zone) {
         return paidAt.atZone(zone).toLocalDate().equals(clock.instant().atZone(zone).toLocalDate());
+    }
+
+    /** The lines of a return document, with their ids, for the modules that move stock back. */
+    private static List<SaleReturned.Line> returnedLines(Sale ret) {
+        return ret.getLines().stream()
+                .map(line -> new SaleReturned.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .toList();
     }
 
     private static Map<String, Object> returnedSnapshot(Sale ret, CreditNote note) {
