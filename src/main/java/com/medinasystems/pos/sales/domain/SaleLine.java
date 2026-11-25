@@ -73,6 +73,12 @@ public class SaleLine extends AuditableEntity {
     @Column(name = "price_list_id")
     private Long priceListId;
 
+    @Column(name = "list_price", nullable = false, precision = 14, scale = 2)
+    private BigDecimal listPrice;
+
+    @Column(name = "price_overridden", nullable = false)
+    private boolean priceOverridden;
+
     protected SaleLine() {
     }
 
@@ -95,6 +101,8 @@ public class SaleLine extends AuditableEntity {
         this.subtotal = calculated.subtotal();
         this.total = calculated.total();
         this.priceListId = line.priceListId();
+        this.listPrice = line.listPrice();
+        this.priceOverridden = line.priceOverridden();
     }
 
     public Short getLineNumber() {
@@ -159,5 +167,13 @@ public class SaleLine extends AuditableEntity {
 
     public Long getPriceListId() {
         return priceListId;
+    }
+
+    public BigDecimal getListPrice() {
+        return listPrice;
+    }
+
+    public boolean isPriceOverridden() {
+        return priceOverridden;
     }
 }

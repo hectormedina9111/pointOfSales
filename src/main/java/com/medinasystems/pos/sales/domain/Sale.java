@@ -61,6 +61,13 @@ public class Sale extends AuditableEntity {
     @Column(name = "cashier_id", nullable = false)
     private Long cashierId;
 
+    @Column(name = "customer_id", nullable = false)
+    private Long customerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_type", nullable = false, length = 10)
+    private OrderType orderType = OrderType.CASH;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private SaleStatus status;
@@ -108,6 +115,10 @@ public class Sale extends AuditableEntity {
     @Column(name = "discount_authorized_by")
     private Long discountAuthorizedBy;
 
+    /** Who authorized a price change in some line. Null when no price was changed. */
+    @Column(name = "price_authorized_by")
+    private Long priceAuthorizedBy;
+
     @Column(length = 500)
     private String notes;
 
@@ -139,19 +150,27 @@ public class Sale extends AuditableEntity {
     }
 
     /** Starts a sale on hold with the totals of the calculator. Nothing is paid and there is no receipt yet. */
-    public static Sale open(SaleContext context, long internalNumber, SaleTotals totals, Long discountAuthorizedBy,
-                            String notes) {
+    public static Sale open(SaleContext context, long internalNumber, SaleTotals totals, SaleOrder order) {
         Sale sale = new Sale();
         sale.internalNumber = internalNumber;
         sale.status = SaleStatus.ON_HOLD;
-        sale.replaceContent(context, totals, discountAuthorizedBy, notes);
+        sale.replaceContent(context, totals, order);
         return sale;
     }
 
-    /** Replaces the lines and totals of a sale on hold, for example when it is resumed with changes. */
-    public void reprice(SaleContext context, SaleTotals totals, Long discountAuthorizedBy, String notes) {
+    /**
+     * Replaces the customer, the order type, the lines, the totals and the notes of a sale on hold. The stored prices are
+     * replaced by the ones given here, so the caller must have priced the lines.
+     */
+    public void reprice(SaleContext context, SaleTotals totals, SaleOrder order) {
         requireOnHold();
-        replaceContent(context, totals, discountAuthorizedBy, notes);
+        replaceContent(context, totals, order);
+    }
+
+    /** Changes the notes of a sale on hold, without touching its lines or totals. */
+    public void changeNotes(String notes) {
+        requireOnHold();
+        this.notes = notes;
     }
 
     /**
@@ -176,11 +195,13 @@ public class Sale extends AuditableEntity {
         this.changeDue = Money.scale2(change);
     }
 
-    private void replaceContent(SaleContext context, SaleTotals totals, Long discountAuthorizedBy, String notes) {
+    private void replaceContent(SaleContext context, SaleTotals totals, SaleOrder order) {
         this.branchId = context.branchId();
         this.cashRegisterId = context.cashRegisterId();
         this.cashSessionId = context.cashSessionId();
         this.cashierId = context.cashierId();
+        this.customerId = order.customerId();
+        this.orderType = order.orderType();
         this.exclusive = totals.exclusive();
         this.subtotal = totals.subtotal();
         this.discountTotal = totals.discountTotal();
@@ -191,8 +212,9 @@ public class Sale extends AuditableEntity {
         this.total = totals.total();
         this.discountType = totals.saleDiscount() == null ? null : totals.saleDiscount().type();
         this.discountValue = totals.saleDiscount() == null ? null : totals.saleDiscount().value();
-        this.discountAuthorizedBy = discountAuthorizedBy;
-        this.notes = notes;
+        this.discountAuthorizedBy = order.discountAuthorizedBy();
+        this.priceAuthorizedBy = order.priceAuthorizedBy();
+        this.notes = order.notes();
         this.lines.clear();
         for (CalculatedLine line : totals.lines()) {
             lines.add(new SaleLine(this, line));
@@ -244,6 +266,14 @@ public class Sale extends AuditableEntity {
 
     public Long getCashierId() {
         return cashierId;
+    }
+
+    public Long getCustomerId() {
+        return customerId;
+    }
+
+    public OrderType getOrderType() {
+        return orderType;
     }
 
     public SaleStatus getStatus() {
@@ -304,6 +334,10 @@ public class Sale extends AuditableEntity {
 
     public Long getDiscountAuthorizedBy() {
         return discountAuthorizedBy;
+    }
+
+    public Long getPriceAuthorizedBy() {
+        return priceAuthorizedBy;
     }
 
     public String getNotes() {
