@@ -98,8 +98,8 @@ Son 50 requerimientos en 15 módulos; la prioridad indica si entran en el MVP (A
 | RF-43 | Recibos | Emitir recibos no fiscales y sus devoluciones, con numeración propia por caja, separados de las facturas | Alta |
 | RF-44 | Fiscal | Operar en varios países, con moneda, impuestos y facturación propios de cada uno; la facturación de cada país es un módulo independiente | Alta |
 | RF-45 | Precios | Crear listas de precios configurables (precio fijo o porcentaje, vigencia, escalas por cantidad) y asignarlas a sucursales y clientes | Alta |
-| RF-46 | Crédito | Vender al crédito respetando el límite del cliente, generar cuentas por cobrar con vencimiento y registrar abonos | Media |
-| RF-47 | Crédito | Reportes de antigüedad de saldos y estado de cuenta por cliente | Media |
+| RF-46 | Crédito (segunda fase) | Vender al crédito respetando el límite del cliente, generar cuentas por cobrar con vencimiento y registrar abonos | Media |
+| RF-47 | Crédito (segunda fase) | Reportes de antigüedad de saldos y estado de cuenta por cliente | Media |
 | RF-48 | Sin conexión | Cada tienda opera con su propio servidor y sigue vendiendo sin internet; sincroniza con la central al volver la conexión | Media |
 | RF-49 | Sincronización | Dar de alta una tienda con un código de activación de un solo uso, sin configurar IP ni rangos a mano, y revocar su acceso desde la central | Alta |
 | RF-50 | Sincronización | Mostrar en la central el estado de sincronización de cada tienda (cambios por descargar, registros por subir, cuadre diario) y alertar retrasos o descuadres | Alta |
@@ -970,7 +970,7 @@ Se construye en 8 iteraciones; cada una termina con algo que se puede probar de 
 4. **Venta y caja (MVP)**: sesiones de caja, venta con líneas, descuentos, pagos mixtos, número fiscal y descuento de stock por evento, regla de factura exclusiva (RF-17 a RF-19, RF-26 a RF-31, RF-41). Al cerrar esta fase ya se puede vender.
 5. **Postventa**: anulaciones, devoluciones con nota de crédito, ventas en espera, comprobante PDF y auditoría (RF-20 a RF-22, RF-32, RF-36).
 6. **Reportes y endurecimiento**: reportes, exportación CSV, transferencias, pruebas de carga contra RNF-01 a RNF-03 y respaldos.
-7. **Crédito**: condiciones de crédito, cuentas por cobrar, abonos y estado de cuenta (RF-46, RF-47).
+7. **Crédito**: condiciones de crédito, cuentas por cobrar, abonos y estado de cuenta (RF-46, RF-47). Decisión del 25 de noviembre de 2026: el crédito pasa a una **segunda fase** del proyecto; por ahora solo se vende de contado.
 8. **Servidor por tienda**: perfil de tienda, subida y bajada de cambios, transferencias entre tiendas, alta con código de activación, panel de sincronización con cuadre diario, instalación y monitoreo remotos (RF-48 a RF-50). Desde la fase 1 la central ya usa su rango de ids, así que no habrá que migrar datos.
 
 ## MVP: base y catálogos
@@ -1472,6 +1472,69 @@ Decidido el 25 de noviembre de 2026, al terminar el 3A. La facturación fiscal (
 - [ ] Una nota de crédito de L 500 paga L 200 en una compra en otra tienda y queda con L 300 de saldo; sin conexión no se puede usar.
 - [ ] Con la sucursal habilitada, la tienda 2 devuelve una venta de la tienda 1 buscándola en la central; deshabilitada, lo rechaza.
 - [ ] Devoluciones y notas de crédito suben a la central y aparecen en sus listados.
+
+## MVP 4: inventario
+
+Decidido el 25 de noviembre de 2026. Cubre RF-12 a RF-16, RF-23 y RF-42. El crédito (RF-46, RF-47) queda para una segunda fase del proyecto: por ahora solo se vende de contado.
+
+### Decisiones del responsable
+
+| Tema | Decisión |
+| --- | --- |
+| Alcance | Existencias por sucursal, movimientos, entradas, salidas y ajustes con motivo, descuento al vender, reposición al devolver, alerta de mínimo, **seriales** y **transferencias entre sucursales**. |
+| Vender sin existencia (RF-23) | Configurable por sucursal en la central (`branch.allow_negative_stock`, ya existe). Por defecto no se vende sin existencia; donde se permite, el stock puede quedar negativo. |
+| Devoluciones | El producto **siempre** vuelve al inventario de la sucursal que recibe la devolución. |
+| Costo | **Costo promedio ponderado por sucursal**: cada entrada con costo lo recalcula; las salidas y ventas salen al costo promedio vigente y lo guardan en el movimiento (base para la utilidad bruta de RF-34). |
+
+### Dónde vive cada cosa
+
+- El inventario de una sucursal lo opera el nodo que la atiende: la tienda para su sucursal; la central solo para sucursales que no tienen tienda asignada (por ejemplo, una bodega central).
+- Existencias, documentos de inventario, movimientos y seriales son **documentos**: se crean en la tienda y suben a la central por `sync_outbox`, como las ventas. La central guarda la existencia de cada sucursal con lo que suben sus tiendas y no revalida.
+- Las transferencias se crean en la tienda de origen, suben a la central y bajan a todas las tiendas por réplica; la tienda destino confirma la recepción y esa confirmación sube.
+
+### Cómo funciona
+
+- **Existencia:** `inventory_item` por producto y sucursal con cantidad y costo promedio. Solo para productos con `tracks_inventory = true`; los servicios nunca mueven inventario.
+- **Bitácora:** `inventory_movement` inmutable con tipo (ENTRY, EXIT, ADJUSTMENT, SALE_OUT, RETURN_IN, TRANSFER_OUT, TRANSFER_IN), cantidad con signo, saldo resultante, costo unitario y costo promedio resultante, referencia al documento y usuario.
+- **Documentos de inventario:** entrada (con costo unitario por línea), salida y ajuste por conteo físico (se escribe la cantidad contada y el sistema calcula la diferencia), con varios productos, número propio por sucursal y motivo obligatorio en salidas y ajustes. Carga inicial: una entrada, que también se puede llenar desde un archivo CSV.
+- **Costo promedio:** `nuevo = (cantidad × promedio + entrada × costo) / (cantidad + entrada)`; si la existencia era cero o negativa, el promedio pasa a ser el costo de la entrada. Si una entrada no trae costo, se usa el promedio vigente o, si no hay, el costo del producto.
+- **Venta:** al cobrar, en la misma transacción, se descuenta la existencia (SALE_OUT) de cada producto inventariable; si no alcanza y la sucursal no lo permite, el cobro se rechaza con `INSUFFICIENT_STOCK`. La orden muestra la existencia al buscar productos.
+- **Devolución:** RETURN_IN siempre, en la sucursal que recibe la devolución, al costo promedio vigente de esa sucursal (no cambia el promedio).
+- **Alerta de mínimo:** `product.min_stock`; el listado de existencias filtra los productos bajo el mínimo y el inicio lo muestra.
+- **Seriales:** en productos con `tracks_serials = true` la entrada exige un serial por unidad (cantidades enteras); la venta exige escanear los seriales en la orden; la devolución elige qué seriales vuelven; la transferencia lleva sus seriales. Cada serial guarda su estado (AVAILABLE, SOLD, IN_TRANSIT, DEFECTIVE), sucursal y venta, y se puede rastrear por número. En una sucursal, los seriales disponibles coinciden con la existencia.
+- **Transferencias:** la tienda de origen crea la transferencia (productos, cantidades y seriales) y descuenta (TRANSFER_OUT); queda EN TRÁNSITO. Al llegar por réplica, la tienda destino la recibe indicando lo recibido (TRANSFER_IN al costo de salida); si recibe menos, la diferencia queda registrada como faltante. Estados: IN_TRANSIT, RECEIVED, RECEIVED_WITH_DIFFERENCES.
+
+### Pantallas
+
+- **Existencias:** listado con filtros (producto, categoría, bajo mínimo, sucursal en la central) y paginación en el servidor; detalle de producto por sucursal con su bitácora.
+- **Documentos de inventario:** listado y detalle; nuevo documento por pasos (tipo y motivo → líneas con costo y seriales, o carga CSV → resumen).
+- **Orden de venta:** existencia en la búsqueda de productos y captura de seriales.
+- **Devolución:** selección de los seriales que vuelven.
+- **Seriales:** búsqueda y rastreo por número.
+- **Transferencias:** listado, nueva transferencia por pasos y recepción en la tienda destino.
+- **Sucursales (central):** marca "Permite vender sin existencia".
+
+### Orden de trabajo del inventario
+
+1. **Backend: núcleo** (módulo `inventory`, existencias, documentos de entrada, salida y ajuste, costo promedio, bitácora, consultas, alerta de mínimo, privilegios y subida a la central).
+2. **Backend: ventas y devoluciones** (descuento al cobrar, regla por sucursal, reposición al devolver, existencia en la búsqueda).
+3. **Backend: seriales** (entrada, venta, devolución, rastreo).
+4. **Backend: transferencias.**
+5. **Frontend: existencias, documentos y carga CSV.**
+6. **Frontend: existencia y seriales en la venta y la devolución, rastreo de seriales.**
+7. **Frontend: transferencias.**
+8. **Cierre:** plan y revisión de criterios.
+
+### Criterios de aceptación del inventario
+
+- [ ] Una entrada de 10 unidades a L 100 y otra de 10 a L 120 dejan existencia 20 y costo promedio L 110.
+- [ ] Un ajuste por conteo deja la existencia contada y registra la diferencia con su motivo.
+- [ ] Al cobrar una venta se descuenta la existencia; sin existencia se rechaza, salvo en una sucursal que lo permita.
+- [ ] Una devolución repone la existencia en la sucursal que la recibe.
+- [ ] Un producto con seriales exige un serial por unidad al ingresar y al vender, y el serial se puede rastrear.
+- [ ] Una transferencia de la tienda 1 a la tienda 2 descuenta en origen, queda en tránsito y suma en destino al recibirla.
+- [ ] La central ve las existencias de todas las sucursales; cada tienda solo la suya.
+- [ ] El listado de existencias muestra los productos bajo el mínimo.
 
 ## Decisiones y preguntas abiertas
 
