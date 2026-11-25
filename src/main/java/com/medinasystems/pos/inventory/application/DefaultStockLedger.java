@@ -132,12 +132,13 @@ public class DefaultStockLedger implements StockLedger {
 
     /**
      * The product as the inventory needs it. Services and products that do not track inventory are refused. A return
-     * always restocks, so it accepts a product deactivated after the sale; a sale does not.
+     * always restocks and a transfer must be able to arrive, so both accept a product deactivated later; a sale does not.
      */
     private SaleableProduct inventoryProduct(long productId, StockReferenceType referenceType) {
         SaleableProduct product = products.find(productId)
                 .orElseThrow(() -> new BusinessRuleException("PRODUCT_NOT_FOUND", "The product does not exist"));
-        if (!product.active() && referenceType != StockReferenceType.SALE_RETURN) {
+        if (!product.active() && referenceType != StockReferenceType.SALE_RETURN
+                && referenceType != StockReferenceType.TRANSFER) {
             throw new BusinessRuleException("PRODUCT_INACTIVE", "The product is inactive");
         }
         if (SERVICE.equals(product.productType()) || !product.tracksInventory()) {
