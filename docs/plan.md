@@ -1525,6 +1525,16 @@ Decidido el 25 de noviembre de 2026. Cubre RF-12 a RF-16, RF-23 y RF-42. El cré
 7. **Frontend: transferencias.**
 8. **Cierre:** plan y revisión de criterios.
 
+Estado al 25 de noviembre de 2026: los pasos 1 a 7 están programados y compilan en el CI (backend #32 a #35, frontend #21 a #23, apilados sobre el 3B); falta la prueba del responsable en la máquina virtual.
+
+### Pendientes conocidos del inventario
+
+- Los seriales no se replican: la tienda de origen ve sus seriales EN TRÁNSITO aun después de que el destino los recibe; el estado consolidado está en la central.
+- Una recarga completa de una tienda (snapshot) borra sus transferencias, clientes y notas de crédito que aún no subieron.
+- La disponibilidad de seriales se valida al cobrar, no al guardar la orden (evita un ciclo entre ventas e inventario).
+- Las reservas de devolución entre tiendas son por cantidad, no por serial.
+- Las líneas de una transferencia pueden llegar a la tienda destino un ciclo de réplica después que el encabezado; la recepción puede fallar unos segundos con `TRANSFER_LINES_MISSING`.
+
 ### Criterios de aceptación del inventario
 
 - [ ] Una entrada de 10 unidades a L 100 y otra de 10 a L 120 dejan existencia 20 y costo promedio L 110.
