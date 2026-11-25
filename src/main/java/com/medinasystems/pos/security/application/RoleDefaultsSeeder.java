@@ -51,19 +51,30 @@ public class RoleDefaultsSeeder implements ApplicationRunner {
             "GET_SALES_ID_RETURNABLE", "POST_SALES_ID_RETURN_QUOTE", "POST_SALES_ID_RETURNS", "GET_SALES_RETURNABLE_LOOKUP",
             "MENU_CREDIT_NOTES", "GET_CREDIT_NOTES", "GET_CREDIT_NOTES_ID", "GET_CREDIT_NOTES_LOOKUP",
             "MENU_CUSTOMERS", "GET_CUSTOMERS", "GET_CUSTOMERS_ID", "POST_CUSTOMERS",
+            // The sale screen shows the stock of a product: read only.
+            "GET_INVENTORY", "GET_INVENTORY_PRODUCTID_BRANCHES_BRANCHID",
             // The lists show the cashier's own documents: see ACTION_SALES_VIEW_ALL in the sales and cash services.
             "GET_SALES", "GET_CASH_SESSIONS");
 
-    private static final List<String> MANAGER_PRIVILEGES = Stream.concat(CASHIER_PRIVILEGES.stream(), Stream.of(
+    private static final List<String> WAREHOUSE_CLERK_PRIVILEGES = List.of(
+            "MENU_INVENTORY", "MENU_INVENTORY_STOCK", "MENU_INVENTORY_DOCUMENTS",
+            "GET_INVENTORY", "GET_INVENTORY_PRODUCTID_BRANCHES_BRANCHID", "GET_INVENTORY_MOVEMENTS",
+            "GET_INVENTORY_DOCUMENTS", "GET_INVENTORY_DOCUMENTS_ID", "POST_INVENTORY_DOCUMENTS");
+
+    private static final List<String> MANAGER_PRIVILEGES = Stream.of(CASHIER_PRIVILEGES,
+            WAREHOUSE_CLERK_PRIVILEGES, List.of(
             "MENU_CASH_SESSIONS", "ACTION_SALE_DISCOUNT_OVERRIDE", "ACTION_SALE_PRICE_OVERRIDE", "ACTION_SALE_RETURN",
             "ACTION_CASH_WITHDRAWAL",
             "GET_CASH_REGISTERS_ID",
             "ACTION_SALES_VIEW_ALL", "GET_CREDIT_NOTES_ID_REDEMPTIONS"))
+            .flatMap(List::stream)
+            .distinct()
             .toList();
 
     /** Role code to the privilege codes it starts with. */
     static final Map<String, List<String>> DEFAULT_GRANTS = Map.of(
             "CASHIER", CASHIER_PRIVILEGES,
+            "WAREHOUSE_CLERK", WAREHOUSE_CLERK_PRIVILEGES,
             "MANAGER", MANAGER_PRIVILEGES);
 
     private final RoleRepository roles;
