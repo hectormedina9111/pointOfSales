@@ -18,9 +18,10 @@ import com.medinasystems.pos.security.infrastructure.PrivilegeRepository;
 import com.medinasystems.pos.security.infrastructure.RoleRepository;
 
 /**
- * Menu privileges of the frontend screens, central node only. Each menu is created when its code is missing,
- * and role ADMIN is made to hold it, so every startup is safe. A parent must come before its children in
- * {@link #MENUS}.
+ * Menu privileges of the frontend screens, central node only. Each menu is created when its code is missing, and
+ * an existing menu gets its name, parent, route, icon and order from {@link #MENUS} again, so a renamed menu reaches
+ * existing databases. Its active flag is kept. Role ADMIN is made to hold every entry, so every startup is safe. A
+ * parent must come before its children in {@link #MENUS}.
  *
  * <p>This is Java code and not a Flyway migration on purpose: a migration would insert rows with central-range
  * ids into every store database, and they would collide with the rows replicated from the central.
@@ -80,7 +81,7 @@ public class MenuSeeder implements ApplicationRunner {
             new MenuDefinition("MENU_SALES", null, "sales", "Ventas", null, "cash-register", 50),
             new MenuDefinition("MENU_SALES_POS", "MENU_SALES", "sales", "Punto de venta", "/sales/pos",
                     "shopping-cart", 1),
-            new MenuDefinition("MENU_SALES_LIST", "MENU_SALES", "sales", "Ventas realizadas", "/sales", "receipt", 2),
+            new MenuDefinition("MENU_SALES_LIST", "MENU_SALES", "sales", "Órdenes", "/sales", "receipt", 2),
             new MenuDefinition("MENU_CASH_SESSION", "MENU_SALES", "cash", "Mi caja", "/cash/session", "cash", 3),
             new MenuDefinition("MENU_CASH_SESSIONS", "MENU_SALES", "cash", "Sesiones de caja", "/cash/sessions",
                     "list-check", 4),
@@ -122,18 +123,26 @@ public class MenuSeeder implements ApplicationRunner {
         if (privilege == null) {
             privilege = create(type, definition);
             created = 1;
+        } else if (type == PrivilegeType.MENU) {
+            // Only the placement is refreshed; setting the same values again changes nothing in the database.
+            privilege.update(definition.name(), privilege.getDescription(), parentOf(definition),
+                    definition.route(), definition.icon(), definition.sortOrder(), privilege.isActive());
         }
         admin.grant(privilege);
         return created;
     }
 
-    private Privilege create(PrivilegeType type, MenuDefinition definition) {
-        Privilege parent = null;
-        if (definition.parentCode() != null) {
-            parent = privileges.findByCode(definition.parentCode())
-                    .orElseThrow(() -> new IllegalStateException(
-                            "Parent menu " + definition.parentCode() + " is missing; keep parents before children"));
+    private Privilege parentOf(MenuDefinition definition) {
+        if (definition.parentCode() == null) {
+            return null;
         }
+        return privileges.findByCode(definition.parentCode())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Parent menu " + definition.parentCode() + " is missing; keep parents before children"));
+    }
+
+    private Privilege create(PrivilegeType type, MenuDefinition definition) {
+        Privilege parent = parentOf(definition);
         Privilege menu = Privilege.catalog(type, definition.code(), definition.name(), null,
                 definition.module());
         menu.update(definition.name(), null, parent, definition.route(), definition.icon(),
