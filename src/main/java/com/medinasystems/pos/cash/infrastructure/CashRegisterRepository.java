@@ -1,5 +1,7 @@
 package com.medinasystems.pos.cash.infrastructure;
 
+import java.util.List;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -10,4 +12,6 @@ public interface CashRegisterRepository extends JpaRepository<CashRegister, Long
     boolean existsByBranchIdAndCode(Long branchId, String code);
 
     boolean existsByBranchIdAndCodeAndIdNot(Long branchId, String code, Long id);
+
+    List<CashRegister> findByBranchId(Long branchId);
 }

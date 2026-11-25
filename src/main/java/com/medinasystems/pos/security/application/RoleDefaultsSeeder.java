@@ -42,10 +42,13 @@ public class RoleDefaultsSeeder implements ApplicationRunner {
             "MENU_SALES", "MENU_SALES_POS", "MENU_SALES_LIST", "MENU_CASH_SESSION",
             "GET_CASH_REGISTERS", "GET_PAYMENT_METHODS",
             "GET_PRODUCTS", "GET_PRODUCTS_ID", "GET_PRODUCTS_BARCODE_CODE", "GET_PRODUCTS_ID_PRICE",
-            "GET_CATEGORIES");
+            "GET_CATEGORIES",
+            "POST_CASH_SESSIONS", "GET_CASH_SESSIONS_CURRENT", "GET_CASH_SESSIONS_ID",
+            "POST_CASH_SESSIONS_ID_MOVEMENTS", "GET_CASH_SESSIONS_ID_SUMMARY", "POST_CASH_SESSIONS_ID_CLOSE");
 
     private static final List<String> MANAGER_PRIVILEGES = Stream.concat(CASHIER_PRIVILEGES.stream(), Stream.of(
-            "MENU_CASH_SESSIONS", "ACTION_SALE_DISCOUNT_OVERRIDE", "ACTION_CASH_WITHDRAWAL", "GET_CASH_REGISTERS_ID"))
+            "MENU_CASH_SESSIONS", "ACTION_SALE_DISCOUNT_OVERRIDE", "ACTION_CASH_WITHDRAWAL", "GET_CASH_REGISTERS_ID",
+            "GET_CASH_SESSIONS"))
             .toList();
 
     /** Role code to the privilege codes it starts with. */

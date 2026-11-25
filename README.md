@@ -65,7 +65,7 @@ La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hopps
 | 6. Precios | Listas de mayoreo y VIP, escalas por cantidad, vigencias, precio por sucursal y precio de hoy. |
 | 7. Tiendas | Panel de tiendas (central); estado de sincronización y login en la tienda 1 (tienda). |
 | 8. Auditoría | Bitácora de cambios, por entidad y por fechas. |
-| 9. Caja y ventas | Altas y listado de cajas por sucursal, y listado de métodos de pago. |
+| 9. Caja y ventas | Altas y listado de cajas por sucursal, listado de métodos de pago y, en la tienda, sesiones de caja (apertura, movimientos, resumen y cierre). |
 | 10. Errores de ejemplo | Respuestas de error esperadas (401, 422). Deben fallar a propósito. |
 
 Antes de empezar, pon la contraseña de `admin` en el entorno (`adminPassword`) y ejecuta **2. Sesión → Login**. Después, **2. Sesión → Cambiar contraseña** y actualiza `adminPassword` con la nueva. El token de acceso dura 15 minutos; si una petición responde 401, ejecuta **Refrescar token**.
@@ -162,6 +162,17 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - Cajas: `GET/POST/PUT /api/v1/cash-registers` (`/cash-registers/{id}` para una), con filtros `branchId` y `active`. Cada caja pertenece a una sucursal y tiene `code` (único dentro de la sucursal), `name` y `receiptPrefix`. Solo la central las crea o cambia; cada nodo lista las cajas de las sucursales que ve.
 - Métodos de pago: `GET /api/v1/payment-methods` (filtro `active`) y `PUT /api/v1/payment-methods/{id}` para cambiar `name`, `requiresReference`, `allowsChange` y `active`. Los códigos `CASH`, `CARD` y `TRANSFER` los fija el sistema: no hay alta ni cambio de código.
 - Privilegios iniciales: al arrancar, la central concede a CASHIER y MANAGER sus privilegios de caja y venta, una sola vez por privilegio (registro en `role_default_grant`). Una concesión que se quite a mano no vuelve en los siguientes arranques. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 1".
+
+### Sesiones de caja (tienda)
+
+Solo la tienda abre, mueve y cierra sesiones de caja; la central responde 403 con `code: STORE_ONLY_OPERATION`. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 2".
+
+- Abrir: `POST /api/v1/cash-sessions` con `cashRegisterId` y `openingAmount` (fondo inicial). Una caja tiene una sola sesión abierta y un cajero tiene una sola (`CASH_REGISTER_BUSY`, `USER_HAS_OPEN_SESSION`).
+- Consultar: `GET /api/v1/cash-sessions/current` (la sesión abierta del cajero), `GET /api/v1/cash-sessions/{id}` (con sus movimientos) y `GET /api/v1/cash-sessions` con filtros `status`, `cashRegisterId`, `userId`, `from` y `to`, del más reciente al más antiguo. Un nodo ve las sesiones de las cajas que ve.
+- Movimientos: `POST /api/v1/cash-sessions/{id}/movements` con `type` (`DEPOSIT` o `WITHDRAWAL`), `amount`, `reason` y, en un retiro, `authorization` (`username` y `password` de un jefe de tienda). Con el privilegio `ACTION_CASH_WITHDRAWAL` no hace falta autorización.
+- Resumen: `GET /api/v1/cash-sessions/{id}/summary` con lo esperado por método de pago. En efectivo es el fondo, más depósitos, menos retiros y más lo cobrado en efectivo neto de vuelto (la parte de cobros llega con el módulo de ventas).
+- Cierre: `POST /api/v1/cash-sessions/{id}/close` con `counts` (`paymentMethodCode` y `amount` por método) y `notes`. Devuelve la sesión cerrada con esperado, contado y diferencia por método.
+- Pruebas: carpeta 9 de Hoppscotch, con la tienda 1. El retiro con autorización necesita un cajero sin `ACTION_CASH_WITHDRAWAL` (el administrador lo tiene); el usuario y la contraseña del jefe van en `managerUsername` y `managerPassword`.
 
 ### Tiendas y activación
 

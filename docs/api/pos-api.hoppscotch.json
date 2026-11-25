@@ -2111,6 +2111,126 @@
             "body": null
           },
           "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Abrir caja en la tienda 1",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"cashSessionId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"cashRegisterId\": \"<<cashRegisterId>>\",\n  \"openingAmount\": 500.00\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Sesión abierta del cajero",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions/current",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Depósito de efectivo",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions/<<cashSessionId>>/movements",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"type\": \"DEPOSIT\",\n  \"amount\": 100.00,\n  \"reason\": \"Cambio adicional\"\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Retiro con autorización del jefe",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions/<<cashSessionId>>/movements",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"type\": \"WITHDRAWAL\",\n  \"amount\": 50.00,\n  \"reason\": \"Pago de servicio de limpieza\",\n  \"authorization\": {\n    \"username\": \"<<managerUsername>>\",\n    \"password\": \"<<managerPassword>>\"\n  }\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Resumen esperado de la sesión",
+          "method": "GET",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions/<<cashSessionId>>/summary",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Cerrar caja con arqueo",
+          "method": "POST",
+          "endpoint": "<<storeUrl>>/api/v1/cash-sessions/<<cashSessionId>>/close",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "bearer",
+            "authActive": true,
+            "token": "<<storeAccessToken>>"
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"counts\": [\n    { \"paymentMethodCode\": \"CASH\", \"amount\": 550.00 }\n  ],\n  \"notes\": \"Arqueo de prueba\"\n}"
+          },
+          "requestVariables": []
         }
       ],
       "auth": {

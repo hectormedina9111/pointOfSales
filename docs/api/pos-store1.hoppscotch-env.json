@@ -152,6 +152,30 @@
       "initialValue": "",
       "currentValue": "",
       "secret": true
+    },
+    {
+      "key": "cashRegisterId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "cashSessionId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "managerUsername",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "managerPassword",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": true
     }
   ]
 }
