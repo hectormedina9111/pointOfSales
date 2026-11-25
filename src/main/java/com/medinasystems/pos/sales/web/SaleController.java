@@ -96,11 +96,12 @@ public class SaleController {
     public PageResponse<SaleSummaryView> list(@RequestParam(required = false) SaleStatus status,
                                               @RequestParam(required = false) Long cashSessionId,
                                               @RequestParam(required = false) Long cashierId,
+                                              @RequestParam(required = false) Long branchId,
                                               @RequestParam(required = false) Instant from,
                                               @RequestParam(required = false) Instant to,
                                               @PageableDefault(sort = {"createdAt", "id"},
                                                       direction = Sort.Direction.DESC) Pageable pageable) {
-        return PageResponse.from(sales.list(status, cashSessionId, cashierId, from, to, pageable));
+        return PageResponse.from(sales.list(status, cashSessionId, cashierId, branchId, from, to, pageable));
     }
 
     @GetMapping("/{id}")

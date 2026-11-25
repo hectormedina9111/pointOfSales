@@ -56,6 +56,9 @@ pos:
     activation-code: ${POS_ACTIVATION_CODE:}
     # Central, SOLO LOCAL: pares "numeroTienda:codigo" que se preparan al arrancar. Vacío en producción.
     dev-activation-codes: ${POS_DEV_ACTIVATION_CODES:}
+    # Tienda: secuencias con nombre (no identity) que también se mueven al rango del nodo al arrancar.
+    extra-sequences:
+      - sale_internal_number_seq
     # Central: cuándo se purga el registro de cambios (cron de Spring, por defecto todos los días a las 03:00).
     purge-cron: "${POS_SYNC_PURGE_CRON:0 0 3 * * *}"
   sales:

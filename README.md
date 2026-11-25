@@ -168,7 +168,7 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 Solo la tienda abre, mueve y cierra sesiones de caja; la central responde 403 con `code: STORE_ONLY_OPERATION`. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 2".
 
 - Abrir: `POST /api/v1/cash-sessions` con `cashRegisterId` y `openingAmount` (fondo inicial). Una caja tiene una sola sesión abierta y un cajero tiene una sola (`CASH_REGISTER_BUSY`, `USER_HAS_OPEN_SESSION`).
-- Consultar: `GET /api/v1/cash-sessions/current` (la sesión abierta del cajero), `GET /api/v1/cash-sessions/{id}` (con sus movimientos) y `GET /api/v1/cash-sessions` con filtros `status`, `cashRegisterId`, `userId`, `from` y `to`, del más reciente al más antiguo. Un nodo ve las sesiones de las cajas que ve.
+- Consultar: `GET /api/v1/cash-sessions/current` (la sesión abierta del cajero), `GET /api/v1/cash-sessions/{id}` (con sus movimientos) y `GET /api/v1/cash-sessions` con filtros `status`, `cashRegisterId`, `userId`, `branchId`, `from` y `to`, del más reciente al más antiguo. Un nodo ve las sesiones de las cajas que ve. Sin `ACTION_SALES_VIEW_ALL` el listado muestra solo las del usuario; cada sesión trae `branchId`.
 - Movimientos: `POST /api/v1/cash-sessions/{id}/movements` con `type` (`DEPOSIT` o `WITHDRAWAL`), `amount`, `reason` y, en un retiro, `authorization` (`username` y `password` de un jefe de tienda). Con el privilegio `ACTION_CASH_WITHDRAWAL` no hace falta autorización.
 - Resumen: `GET /api/v1/cash-sessions/{id}/summary` con lo esperado por método de pago. En efectivo es el fondo, más depósitos, menos retiros y más lo cobrado en efectivo neto de vuelto (la parte de cobros llega con el módulo de ventas).
 - Cierre: `POST /api/v1/cash-sessions/{id}/close` con `counts` (`paymentMethodCode` y `amount` por método) y `notes`. Devuelve la sesión cerrada con esperado, contado y diferencia por método.
@@ -182,9 +182,21 @@ Solo la tienda cotiza, pone en espera y cobra; la central responde 403 con `code
 - Esperas: `POST /api/v1/sales/holds` guarda la venta sin cobrar en la caja de la sesión abierta (`NO_OPEN_SESSION` si no hay una). `GET /api/v1/sales/holds` lista las esperas de la caja, `GET /api/v1/sales/holds/{id}` muestra una y `DELETE /api/v1/sales/holds/{id}` la borra de verdad (no es un documento: no se cobró nada).
 - Cobrar: `POST /api/v1/sales` con `lines`, `payments` (`paymentMethodCode`, `amount`, y en efectivo `amountReceived`; en tarjeta o transferencia, `reference`, y en tarjeta `cardLast4`), `idempotencyKey` (obligatoria) y, si hace falta, `authorization` (`username` y `password` de un jefe). Con `holdId` cobra una venta en espera. El servidor recalcula todo; los pagos deben sumar el total exacto. Devuelve 201 con la venta, o 200 con la que creó esa misma clave: repetir un cobro nunca crea otra venta.
 - Descuentos: más de `pos.sales.max-discount-percent` (10 % por defecto, variable `POS_SALES_MAX_DISCOUNT_PERCENT`) en una línea o en la venta necesita `ACTION_SALE_DISCOUNT_OVERRIDE` o la autorización de un jefe (`DISCOUNT_AUTHORIZATION_REQUIRED`).
-- Consultar: `GET /api/v1/sales/{id}` (con líneas y pagos), `GET /api/v1/sales` con `status`, `cashSessionId`, `cashierId`, `from` y `to`, del más reciente al más antiguo. Solo el jefe de tienda tiene el listado (`GET_SALES`); el cajero consulta por id.
+- Consultar: `GET /api/v1/sales/{id}` (con líneas y pagos), `GET /api/v1/sales` con `status`, `cashSessionId`, `cashierId`, `from` y `to`, del más reciente al más antiguo. El cajero ve en el listado solo sus ventas (`GET_SALES`); con `ACTION_SALES_VIEW_ALL` (jefe de tienda y administrador) ve todas las de la tienda, y en la central `branchId` filtra por sucursal. La consulta por id todavía no aplica esta regla (ver `docs/plan.md`, "3A paso 4", pendientes).
 - Ticket: `GET /api/v1/sales/{id}/ticket` con los datos de impresión de 80 mm: empresa (razón social, nombre comercial, RTN), sucursal, caja, recibo, fecha y hora en la zona de la empresa, cajero, líneas, totales con exento, gravado 15 % y 18 %, ISV, pagos y vuelto. Solo para ventas cobradas.
 - Pruebas: carpeta 9 de Hoppscotch. Los cobros de ejemplo suponen un producto de precio L 115.00; ajuste `productId` o los montos al precio real.
+
+### Subida de ventas a la central
+
+Las ventas cobradas y las sesiones de caja de cada tienda suben a la central por la cola `sync_outbox`, la misma que usa el cambio de contraseña. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 4".
+
+- **Qué sube.** `SALE_PAID`: la venta con sus líneas y pagos, con los mismos ids que tiene en la tienda. `CASH_SESSION`: la sesión con todos sus movimientos, como una foto completa; la central guarda la más reciente.
+- **Cuándo.** La fila se escribe en la misma transacción del cobro, del movimiento o del cierre. El ciclo de sincronización (cada 30 segundos) sube la cola en orden, de 100 en 100, antes de bajar cambios.
+- **Sin internet.** La tienda sigue vendiendo y cobrando. Las filas quedan pendientes y suben cuando vuelve la conexión.
+- **Orden.** La sesión se encola al abrir, antes de cualquier venta de esa caja. Si una venta llega antes que su sesión, la central responde `RETRY` sin guardarla (`CASH_SESSION_MISSING`); la tienda la reenvía en el siguiente ciclo y registra el intento (`attempts`, `last_error`).
+- **Respuestas.** `ACCEPTED` (guardado, o ya estaba), `REJECTED` con código (`BRANCH_MISMATCH`, `INVALID_PAYLOAD`, `UNKNOWN_EVENT`) o `RETRY`. La central no revalida las reglas de negocio (por ejemplo, una sola sesión abierta por cajero, que la tienda ya comprueba): solo comprueba que el documento esté completo y que la sucursal sea la de la tienda.
+- **Consulta en la central.** `GET /api/v1/sales` y `GET /api/v1/cash-sessions` muestran la sucursal de cada documento (`branchId`) y aceptan el filtro `branchId`.
+- **Pruebas.** Carpeta 9 de Hoppscotch, en la central: "Ventas de todas las tiendas" y "Sesiones de caja de todas las tiendas". Con la tienda 1 sin internet, las ventas se siguen cobrando; al volver, aparecen en la central.
 
 ### Tiendas y activación
 

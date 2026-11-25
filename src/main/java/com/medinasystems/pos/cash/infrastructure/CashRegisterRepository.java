@@ -13,5 +13,9 @@ public interface CashRegisterRepository extends JpaRepository<CashRegister, Long
 
     boolean existsByBranchIdAndCodeAndIdNot(Long branchId, String code, Long id);
 
+    boolean existsByReceiptPrefix(String receiptPrefix);
+
+    boolean existsByReceiptPrefixAndIdNot(String receiptPrefix, Long id);
+
     List<CashRegister> findByBranchId(Long branchId);
 }

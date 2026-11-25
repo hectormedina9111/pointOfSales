@@ -75,8 +75,9 @@ public final class SyncProtocol {
     }
 
     /**
-     * What the central node decided for one item. {@code result} is ACCEPTED or REJECTED; {@code code} explains
-     * it (STALE, USER_NOT_FOUND...) and is null when there is nothing to add.
+     * What the central node decided for one item. {@code result} is ACCEPTED or REJECTED (final, receipted) or RETRY
+     * (not stored: the store sends the item again later, for example when its cash session has not arrived).
+     * {@code code} explains it (STALE, USER_NOT_FOUND...) and is null when there is nothing to add.
      */
     public record UploadResult(long outboxId, String result, String code) {
     }
