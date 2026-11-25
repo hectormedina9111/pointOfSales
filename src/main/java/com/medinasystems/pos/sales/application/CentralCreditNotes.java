@@ -2,7 +2,6 @@ package com.medinasystems.pos.sales.application;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -39,8 +38,8 @@ public class CentralCreditNotes {
 
     private static final Logger log = LoggerFactory.getLogger(CentralCreditNotes.class);
     private static final String SYNC_PATH = "/api/v1/sync/credit-notes/";
-    /** Credit note numbers are upper-case letters, digits and hyphens: they are safe in a URL path. */
-    private static final Pattern NUMBER = Pattern.compile("[A-Z0-9-]{1,30}");
+    /** Credit note numbers travel in the URL path: only letters, digits, hyphens and underscores are sent. */
+    private static final Pattern NUMBER = Pattern.compile("[A-Za-z0-9_-]{1,30}");
     /** Redemption keys are safe in a URL path: the idempotency key is checked against this before it is sent. */
     private static final Pattern KEY = Pattern.compile("[A-Za-z0-9._:-]{1,100}");
 
@@ -52,12 +51,12 @@ public class CentralCreditNotes {
         this.outbox = outbox;
     }
 
-    /** The number as it is compared and sent: trimmed and upper-case; null when blank. */
+    /** The number as it is compared and sent: trimmed, with its case kept; null when blank. */
     public static String normalize(String number) {
         if (number == null || number.isBlank()) {
             return null;
         }
-        return number.trim().toUpperCase(Locale.ROOT);
+        return number.trim();
     }
 
     /**

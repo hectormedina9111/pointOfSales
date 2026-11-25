@@ -2193,7 +2193,7 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 - Los cambios de saldo van por JPA, así que el disparador los replica.
 
 **Cobro en la tienda (`CentralCreditNotes`).**
-- Clave de cada pago: `{clave de idempotencia}:{posición}`. Como la clave viaja en la URL, la clave de idempotencia debe tener solo `A-Z a-z 0-9 . _ : -`; si no, 422 `INVALID_IDEMPOTENCY_KEY`. El número se normaliza (sin espacios, mayúsculas) y debe ser `A-Z 0-9 -`; si no, 404 sin llamar a la central.
+- Clave de cada pago: `{clave de idempotencia}:{posición}`. Como la clave viaja en la URL, la clave de idempotencia debe tener solo `A-Z a-z 0-9 . _ : -`; si no, 422 `INVALID_IDEMPOTENCY_KEY`. El número se recorta de espacios y debe tener solo letras, dígitos, guion o guion bajo (viaja en la ruta); si no, 404 sin llamar a la central. Los prefijos de recibo todavía no se validan con esa regla: pendiente.
 - Después de las validaciones locales y antes de guardar, se canjea cada pago. La clave se registra antes de llamar, así que una respuesta perdida también se libera.
 - `TransactionSynchronization`: si la transacción del cobro no se confirma, cada clave se libera. Si la central no responde, la liberación va a la cola (`CREDIT_NOTE_RELEASE`); la central la aplica con `CreditNoteReleaseUploadHandler`.
 - La idempotencia del cobro se revisa antes de canjear, como antes.
