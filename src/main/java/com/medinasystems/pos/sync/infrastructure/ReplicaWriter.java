@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,9 +40,10 @@ public class ReplicaWriter {
     private static final String NOT_OLDER_PASSWORD = "EXCLUDED.password_changed_at IS NULL"
             + " OR app_user.password_changed_at IS NULL"
             + " OR EXCLUDED.password_changed_at >= app_user.password_changed_at";
+    /** Generated columns (such as customer.display_name) are computed by PostgreSQL and cannot be written. */
     private static final String COLUMNS_OF_TABLE = """
             SELECT column_name FROM information_schema.columns
-            WHERE table_schema = current_schema() AND table_name = ?
+            WHERE table_schema = current_schema() AND table_name = ? AND is_generated = 'NEVER'
             ORDER BY ordinal_position
             """;
 
@@ -130,30 +132,46 @@ public class ReplicaWriter {
      */
     private void upsert(String table, String json) {
         String name = safe(table);
-        String set = columnsOf(name).stream()
+        List<String> columnList = columnsOf(name);
+        String set = columnList.stream()
                 .filter(column -> !"id".equals(column))
-                .map(column -> column + " = " + assignment(name, column))
+                .map(column -> quoted(column) + " = " + assignment(name, column))
                 .reduce((left, right) -> left + ", " + right)
                 .orElseThrow(() -> new IllegalStateException("Table has no columns to update: " + name));
-        jdbc.update("INSERT INTO " + name + " SELECT r.* FROM json_populate_recordset(NULL::" + name
-                + ", ?::json) AS r ON CONFLICT (id) DO UPDATE SET " + set, json);
+        jdbc.update("INSERT INTO " + name + " (" + quotedList(columnList) + ") SELECT " + selectList(columnList)
+                + " FROM json_populate_recordset(NULL::" + name + ", ?::json) AS r ON CONFLICT (id) DO UPDATE SET "
+                + set, json);
     }
 
     private static String assignment(String table, String column) {
         if (!APP_USER.equals(table) || !PASSWORD_COLUMNS.contains(column)) {
-            return "EXCLUDED." + column;
+            return "EXCLUDED." + quoted(column);
         }
-        return "CASE WHEN " + NOT_OLDER_PASSWORD + " THEN EXCLUDED." + column + " ELSE app_user." + column + " END";
+        return "CASE WHEN " + NOT_OLDER_PASSWORD + " THEN EXCLUDED." + quoted(column) + " ELSE app_user."
+                + quoted(column) + " END";
     }
 
     private void insert(String table, String json) {
         String name = safe(table);
-        jdbc.update("INSERT INTO " + name + " SELECT r.* FROM json_populate_recordset(NULL::" + name
-                + ", ?::json) AS r", json);
+        List<String> columnList = columnsOf(name);
+        jdbc.update("INSERT INTO " + name + " (" + quotedList(columnList) + ") SELECT " + selectList(columnList)
+                + " FROM json_populate_recordset(NULL::" + name + ", ?::json) AS r", json);
     }
 
     private List<String> columnsOf(String table) {
         return columns.computeIfAbsent(table, name -> jdbc.queryForList(COLUMNS_OF_TABLE, String.class, name));
+    }
+
+    private static String quoted(String column) {
+        return "\"" + column + "\"";
+    }
+
+    private static String quotedList(List<String> columnList) {
+        return columnList.stream().map(ReplicaWriter::quoted).collect(Collectors.joining(", "));
+    }
+
+    private static String selectList(List<String> columnList) {
+        return columnList.stream().map(column -> "r." + quoted(column)).collect(Collectors.joining(", "));
     }
 
     private void enterApplyMode() {

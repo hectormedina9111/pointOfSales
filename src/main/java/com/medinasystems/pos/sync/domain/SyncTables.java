@@ -26,6 +26,7 @@ public final class SyncTables {
             SyncTable.main("product"),
             SyncTable.main("product_tax"),
             SyncTable.main("price_list"),
+            SyncTable.main("customer"),
             SyncTable.main("price_list_item"),
             SyncTable.main("cash_register"),
             SyncTable.main("payment_method"),
