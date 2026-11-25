@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.medinasystems.pos.sync.StoreCaller;
 import com.medinasystems.pos.sync.domain.StoreNode;
 import com.medinasystems.pos.sync.domain.StoreTokens;
 import com.medinasystems.pos.sync.infrastructure.StoreNodeRepository;
@@ -23,7 +24,7 @@ import com.medinasystems.pos.sync.infrastructure.StoreNodeRepository;
  */
 final class StoreTokenAuthenticationFilter extends OncePerRequestFilter {
 
-    public static final String STORE_NODE_ATTRIBUTE = "posStoreNodeId";
+    public static final String STORE_NODE_ATTRIBUTE = StoreCaller.NODE_ATTRIBUTE;
     static final String TOKEN_HEADER = "X-Store-Token";
     private static final String SYNC_PREFIX = "/api/v1/sync/";
     private static final String ACTIVATE = "/api/v1/sync/activate";

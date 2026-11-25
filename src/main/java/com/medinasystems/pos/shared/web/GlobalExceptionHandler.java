@@ -22,9 +22,11 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.medinasystems.pos.shared.BusinessConflictException;
+import com.medinasystems.pos.shared.BusinessNotFoundException;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ReadOnlyNodeException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
+import com.medinasystems.pos.shared.ServiceUnavailableException;
 import com.medinasystems.pos.shared.StoreOnlyOperationException;
 
 /**
@@ -71,6 +73,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 LocaleContextHolder.getLocale());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
         problem.setTitle(messages.getMessage("title.BUSINESS_CONFLICT", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", ex.getCode());
+        return problem;
+    }
+
+    @ExceptionHandler(BusinessNotFoundException.class)
+    public ProblemDetail handleBusinessNotFound(BusinessNotFoundException ex) {
+        String detail = messages.getMessage("error." + ex.getCode(), null, ex.getMessage(),
+                LocaleContextHolder.getLocale());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, detail);
+        problem.setTitle(messages.getMessage("title.NOT_FOUND", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", ex.getCode());
+        return problem;
+    }
+
+    @ExceptionHandler(ServiceUnavailableException.class)
+    public ProblemDetail handleServiceUnavailable(ServiceUnavailableException ex) {
+        String detail = messages.getMessage("error." + ex.getCode(), null, ex.getMessage(),
+                LocaleContextHolder.getLocale());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, detail);
+        problem.setTitle(messages.getMessage("title.SERVICE_UNAVAILABLE", null, LocaleContextHolder.getLocale()));
         problem.setProperty("code", ex.getCode());
         return problem;
     }
