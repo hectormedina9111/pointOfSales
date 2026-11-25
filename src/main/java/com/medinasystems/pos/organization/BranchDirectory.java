@@ -1,5 +1,6 @@
 package com.medinasystems.pos.organization;
 
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -16,4 +17,10 @@ public interface BranchDirectory {
 
     /** True when a branch with this id exists. */
     boolean exists(long branchId);
+
+    /** True when the branch exists and is active. */
+    boolean isActive(long branchId);
+
+    /** Every active branch, ordered by code. */
+    List<BranchInfo> activeBranches();
 }
