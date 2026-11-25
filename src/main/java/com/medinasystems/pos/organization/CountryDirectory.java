@@ -17,4 +17,7 @@ public interface CountryDirectory {
 
     /** Time zone of the country, used to decide what "today" means for it. Empty when the country does not exist. */
     Optional<ZoneId> timeZoneOf(long countryId);
+
+    /** Id of the country this node serves. Empty when no country is configured yet. */
+    Optional<Long> defaultCountryId();
 }

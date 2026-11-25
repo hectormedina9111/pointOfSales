@@ -48,7 +48,7 @@ public class OrganizationSeeder implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         List<String> created = new ArrayList<>();
-        if (!countries.existsByIsoCode(HONDURAS_ISO)) {
+        if (countries.count() == 0) {
             countryService.create(new CountryData(HONDURAS_ISO, "Honduras", "HNL", "America/Tegucigalpa", "RTN",
                     FiscalProviderCode.HN_SAR, true));
             created.add("country Honduras");

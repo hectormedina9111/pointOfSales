@@ -1330,6 +1330,7 @@ Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas p
 - Una sucursal que este nodo no ve responde 404 en lugar de 403, para no revelar que existe. La central ve todas; cada tienda solo la suya.
 - Crear una sucursal no da acceso a nadie, ni siquiera a quien la crea. Cada usuario entra solo a las tiendas que el administrador le asigna en `user_branch` con `PUT /users/{id}/branches`.
 - Los eventos de auditoría de cambios guardan solo los campos que cambiaron; las altas no tienen valores anteriores.
+- Decisión del 24 de noviembre de 2026: cada servidor central atiende un solo país. La tabla `country` no cambia; crear un segundo país se rechaza con `SINGLE_COUNTRY_ONLY` (422). Cambiar el país existente sigue permitido. Sucursales, impuestos y listas de precios siguen llevando su país, y los países se replican a las tiendas como el resto de datos maestros. El arranque de la central crea Honduras solo si no hay ningún país.
 
 ### Decisiones de implementación: paso 4 (catálogo)
 

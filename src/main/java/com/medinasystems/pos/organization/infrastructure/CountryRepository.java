@@ -15,4 +15,6 @@ public interface CountryRepository extends JpaRepository<Country, Long> {
     boolean existsByIsoCodeAndIdNot(String isoCode, Long id);
 
     boolean existsByIdAndActiveTrue(Long id);
+
+    Optional<Country> findFirstByOrderByIdAsc();
 }
