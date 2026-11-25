@@ -30,7 +30,7 @@ public class DefaultBranchDirectory implements BranchDirectory {
     @Transactional(readOnly = true)
     public Optional<BranchInfo> info(long branchId) {
         return branches.findById(branchId).map(branch -> new BranchInfo(branch.getId(), branch.getName(),
-                branch.getAddress()));
+                branch.getAddress(), branch.isAcceptsForeignReturns()));
     }
 
     @Override

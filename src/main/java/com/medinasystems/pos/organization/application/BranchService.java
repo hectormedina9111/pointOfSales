@@ -73,7 +73,8 @@ public class BranchService {
             throw duplicatedCode();
         }
         Branch branch = new Branch(company, country, data.code(), data.name(), data.address(), data.phone(),
-                data.allowNegativeStock(), data.active(), data.defaultPriceListId());
+                data.allowNegativeStock(), data.active(), data.defaultPriceListId(),
+                data.acceptsForeignReturns());
         Branch saved = saveChecking(branch, data.defaultPriceListId());
         events.publishEvent(AuditEvent.created("BRANCH_CREATED", "branch", saved.getId(), snapshot(saved)));
         return BranchView.from(saved);
@@ -87,7 +88,8 @@ public class BranchService {
             throw duplicatedCode();
         }
         branch.update(country, data.code(), data.name(), data.address(), data.phone(),
-                data.allowNegativeStock(), data.active(), data.defaultPriceListId());
+                data.allowNegativeStock(), data.active(), data.defaultPriceListId(),
+                data.acceptsForeignReturns());
         saveChecking(branch, data.defaultPriceListId());
         events.publishEvent(AuditEvent.updated("BRANCH_UPDATED", "branch", id, before, snapshot(branch)));
         return BranchView.from(branch);
@@ -134,6 +136,7 @@ public class BranchService {
         values.put("allowNegativeStock", branch.isAllowNegativeStock());
         values.put("active", branch.isActive());
         values.put("defaultPriceListId", branch.getDefaultPriceListId());
+        values.put("acceptsForeignReturns", branch.isAcceptsForeignReturns());
         return values;
     }
 }
