@@ -2,6 +2,8 @@ package com.medinasystems.pos.inventory.infrastructure;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -18,6 +20,9 @@ import com.medinasystems.pos.inventory.domain.InventoryItem;
 public interface InventoryItemRepository extends JpaRepository<InventoryItem, Long>, JpaSpecificationExecutor<InventoryItem> {
 
     Optional<InventoryItem> findByProductIdAndBranchId(long productId, long branchId);
+
+    /** The stock rows of the given products in one branch; products without a row are not returned. */
+    List<InventoryItem> findByBranchIdAndProductIdIn(long branchId, Collection<Long> productIds);
 
     /**
      * Creates the stock row of a product in a branch when it does not exist yet. ON CONFLICT DO NOTHING makes it safe

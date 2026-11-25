@@ -37,6 +37,7 @@ import com.medinasystems.pos.organization.CompanyDirectory;
 import com.medinasystems.pos.organization.CompanyInfo;
 import com.medinasystems.pos.pricing.PriceQuote;
 import com.medinasystems.pos.pricing.ProductPricing;
+import com.medinasystems.pos.sales.SalePaid;
 import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.Discount;
 import com.medinasystems.pos.sales.domain.OrderType;
@@ -338,7 +339,15 @@ public class SaleService {
         Sale saved = sales.saveAndFlush(sale);
         events.publishEvent(AuditEvent.created("SALE_PAID", "sale", saved.getId(), paidSnapshot(saved)));
         outbox.enqueue(SaleDocument.EVENT_TYPE, SaleDocument.of(saved));
+        events.publishEvent(new SalePaid(saved.getId(), saved.getBranchId(), userId, paidLines(saved)));
         return new SaleResult(view(saved), true);
+    }
+
+    /** The lines of a charged sale, with their ids, for the modules that move stock. */
+    private static List<SalePaid.Line> paidLines(Sale sale) {
+        return sale.getLines().stream()
+                .map(line -> new SalePaid.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .toList();
     }
 
     /**

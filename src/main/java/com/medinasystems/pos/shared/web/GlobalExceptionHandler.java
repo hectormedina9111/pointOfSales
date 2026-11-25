@@ -59,7 +59,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ProblemDetail handleBusinessRule(BusinessRuleException ex) {
         // The text comes from messages*.properties under "error.<CODE>"; without a translation, the exception message is used.
-        String detail = messages.getMessage("error." + ex.getCode(), null, ex.getMessage(),
+        String detail = messages.getMessage("error." + ex.getCode(), ex.getArguments(), ex.getMessage(),
                 LocaleContextHolder.getLocale());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatusCode.valueOf(422), detail);
         problem.setTitle(messages.getMessage("title.BUSINESS_RULE_VIOLATED", null, LocaleContextHolder.getLocale()));

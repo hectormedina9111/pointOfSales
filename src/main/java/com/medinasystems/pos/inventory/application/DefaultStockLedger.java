@@ -66,7 +66,7 @@ public class DefaultStockLedger implements StockLedger {
     public StockMovement apply(long branchId, long productId, StockMovementType type, BigDecimal signedQuantity,
                                BigDecimal unitCost, StockReferenceType referenceType, long referenceId, long userId) {
         BranchInfo branch = branches.operated(branchId);
-        SaleableProduct product = inventoryProduct(productId);
+        SaleableProduct product = inventoryProduct(productId, referenceType);
         if (signedQuantity == null || signedQuantity.signum() == 0) {
             throw new BusinessRuleException("INVALID_QUANTITY", "The quantity must be greater than zero");
         }
@@ -82,7 +82,7 @@ public class DefaultStockLedger implements StockLedger {
     public Optional<StockMovement> count(long branchId, long productId, BigDecimal countedQuantity,
                                          StockReferenceType referenceType, long referenceId, long userId) {
         BranchInfo branch = branches.operated(branchId);
-        SaleableProduct product = inventoryProduct(productId);
+        SaleableProduct product = inventoryProduct(productId, referenceType);
         if (countedQuantity == null || countedQuantity.signum() < 0) {
             throw new BusinessRuleException("INVALID_COUNTED_QUANTITY", "The counted quantity cannot be negative");
         }
@@ -97,19 +97,21 @@ public class DefaultStockLedger implements StockLedger {
     }
 
     /**
-     * The product as the inventory needs it. Services and products that do not track inventory are refused, and so are
-     * products with serials, which are not supported yet.
+     * The product as the inventory needs it. Services and products that do not track inventory are refused. Products with
+     * serials are refused too, except for sales and returns, which move the quantity until serials are supported. A return
+     * always restocks, so it accepts a product deactivated after the sale; a sale does not.
      */
-    private SaleableProduct inventoryProduct(long productId) {
+    private SaleableProduct inventoryProduct(long productId, StockReferenceType referenceType) {
         SaleableProduct product = products.find(productId)
                 .orElseThrow(() -> new BusinessRuleException("PRODUCT_NOT_FOUND", "The product does not exist"));
-        if (!product.active()) {
+        boolean fromSale = referenceType == StockReferenceType.SALE || referenceType == StockReferenceType.SALE_RETURN;
+        if (!product.active() && referenceType != StockReferenceType.SALE_RETURN) {
             throw new BusinessRuleException("PRODUCT_INACTIVE", "The product is inactive");
         }
         if ("SERVICE".equals(product.productType()) || !product.tracksInventory()) {
             throw new BusinessRuleException("PRODUCT_NOT_INVENTORIED", "The product does not track inventory");
         }
-        if (product.tracksSerials()) {
+        if (product.tracksSerials() && !fromSale) {
             throw new BusinessRuleException("SERIALS_REQUIRED", "The product needs serial numbers, not supported yet");
         }
         return product;
@@ -138,7 +140,9 @@ public class DefaultStockLedger implements StockLedger {
         BigDecimal after = before.add(quantity);
         boolean incoming = quantity.signum() > 0;
         if (!incoming && after.signum() < 0 && !branch.allowNegativeStock()) {
-            throw new BusinessRuleException("INSUFFICIENT_STOCK", "There is not enough stock of the product");
+            throw new BusinessRuleException("INSUFFICIENT_STOCK",
+                    "There is not enough stock of " + product.name() + " (SKU " + product.sku() + ")",
+                    product.sku(), product.name(), before.stripTrailingZeros().toPlainString());
         }
         BigDecimal average = item.getAverageCost();
         BigDecimal unitCost;
