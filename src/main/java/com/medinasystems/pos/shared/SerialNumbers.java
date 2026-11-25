@@ -43,25 +43,44 @@ public final class SerialNumbers {
     }
 
     /**
-     * Checks that a quantity of a serial product is whole and that it has one serial number per unit.
+     * Checks that a quantity of a serial product is a whole number of units.
+     *
+     * @throws BusinessRuleException FRACTIONAL_SERIAL_QUANTITY
+     */
+    public static void requireWhole(BigDecimal quantity) {
+        if (quantity.abs().stripTrailingZeros().scale() > 0) {
+            throw new BusinessRuleException("FRACTIONAL_SERIAL_QUANTITY",
+                    "A product with serial numbers is counted in whole units");
+        }
+    }
+
+    /**
+     * Checks that a whole quantity has one serial number per unit. Zero units with zero serial numbers is valid: it is how a
+     * count empties the stock.
+     *
+     * @throws BusinessRuleException SERIAL_COUNT_MISMATCH
+     */
+    public static void requireCount(BigDecimal quantity, int serials) {
+        BigDecimal units = quantity.abs();
+        if (units.compareTo(BigDecimal.valueOf(serials)) != 0) {
+            throw new BusinessRuleException("SERIAL_COUNT_MISMATCH",
+                    "Each unit needs one serial number: the quantity is {0} and there are {1} serial numbers",
+                    units.stripTrailingZeros().toPlainString(), serials);
+        }
+    }
+
+    /**
+     * Checks a quantity of a serial product that moves units: whole, with serial numbers, and one per unit.
      *
      * @param quantity the quantity, with or without sign
      * @param serials  the normalized serial numbers of the line
      * @throws BusinessRuleException FRACTIONAL_SERIAL_QUANTITY, SERIALS_REQUIRED or SERIAL_COUNT_MISMATCH
      */
     public static void requireOnePerUnit(BigDecimal quantity, List<String> serials) {
-        BigDecimal units = quantity.abs();
-        if (units.stripTrailingZeros().scale() > 0) {
-            throw new BusinessRuleException("FRACTIONAL_SERIAL_QUANTITY",
-                    "A product with serial numbers is counted in whole units");
-        }
+        requireWhole(quantity);
         if (serials.isEmpty()) {
             throw new BusinessRuleException("SERIALS_REQUIRED", "The product needs serial numbers");
         }
-        if (units.compareTo(BigDecimal.valueOf(serials.size())) != 0) {
-            throw new BusinessRuleException("SERIAL_COUNT_MISMATCH",
-                    "Each unit needs one serial number: the quantity is {0} and there are {1} serial numbers",
-                    units.toBigInteger().toString(), serials.size());
-        }
+        requireCount(quantity, serials.size());
     }
 }

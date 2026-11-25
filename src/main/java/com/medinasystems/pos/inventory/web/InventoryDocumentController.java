@@ -6,6 +6,7 @@ import java.util.List;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -29,6 +30,7 @@ import com.medinasystems.pos.inventory.application.InventoryDocumentSummaryView;
 import com.medinasystems.pos.inventory.application.InventoryDocumentView;
 import com.medinasystems.pos.inventory.application.InventoryQueryService;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
+import com.medinasystems.pos.shared.SerialNumbers;
 import com.medinasystems.pos.shared.web.PageResponse;
 
 /**
@@ -91,10 +93,11 @@ public class InventoryDocumentController {
     public record LineRequest(@NotNull Long productId,
                               @Digits(integer = 9, fraction = 3) BigDecimal quantity,
                               @Digits(integer = 9, fraction = 3) BigDecimal countedQuantity,
-                              @Digits(integer = 10, fraction = 4) BigDecimal unitCost) {
+                              @Digits(integer = 10, fraction = 4) BigDecimal unitCost,
+                              List<@NotBlank @Size(max = SerialNumbers.MAX_LENGTH) String> serialNumbers) {
 
         InventoryDocumentData.LineData toData() {
-            return new InventoryDocumentData.LineData(productId, quantity, countedQuantity, unitCost);
+            return new InventoryDocumentData.LineData(productId, quantity, countedQuantity, unitCost, serialNumbers);
         }
     }
 }

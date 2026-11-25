@@ -349,7 +349,8 @@ public class SaleService {
     /** The lines of a charged sale, with their ids, for the modules that move stock. */
     private static List<SalePaid.Line> paidLines(Sale sale) {
         return sale.getLines().stream()
-                .map(line -> new SalePaid.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .map(line -> new SalePaid.Line(line.getId(), line.getProductId(), line.getQuantity(),
+                        line.getSerialNumbers()))
                 .toList();
     }
 

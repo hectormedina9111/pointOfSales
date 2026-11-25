@@ -401,7 +401,8 @@ public class SaleReturnService {
     /** The lines of a return document, with their ids, for the modules that move stock back. */
     private static List<SaleReturned.Line> returnedLines(Sale ret) {
         return ret.getLines().stream()
-                .map(line -> new SaleReturned.Line(line.getId(), line.getProductId(), line.getQuantity()))
+                .map(line -> new SaleReturned.Line(line.getId(), line.getProductId(), line.getQuantity(),
+                        line.getSerialNumbers()))
                 .toList();
     }
 

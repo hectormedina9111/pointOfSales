@@ -120,7 +120,7 @@ public class InventoryDocumentService {
 
         List<StockMovement> moved = new ArrayList<>();
         for (LineData line : sortedByProduct(data.lines())) {
-            applyLine(document, branchId, data.type(), line, userId).ifPresent(moved::add);
+            moved.addAll(applyLine(document, branchId, data.type(), line, userId));
         }
         if (document.getLines().isEmpty()) {
             throw new BusinessRuleException("ADJUSTMENT_WITHOUT_CHANGE", "No line changes the stock");
@@ -138,23 +138,28 @@ public class InventoryDocumentService {
 
     /**
      * Applies one line. An entry or an exit moves its quantity; an adjustment moves the stock to the counted quantity, and
-     * a line that changes nothing is not kept.
+     * a line that changes nothing is not kept. A serial adjustment can have two movements (units that left and units that
+     * came back); the line keeps their net change.
      */
-    private Optional<StockMovement> applyLine(InventoryDocument document, long branchId, InventoryDocumentType type,
-                                              LineData line, long userId) {
+    private List<StockMovement> applyLine(InventoryDocument document, long branchId, InventoryDocumentType type,
+                                          LineData line, long userId) {
         StockReferenceType reference = StockReferenceType.INVENTORY_DOCUMENT;
         if (type == InventoryDocumentType.ADJUSTMENT) {
-            Optional<StockMovement> moved = ledger.count(branchId, line.productId(), line.countedQuantity(), reference,
-                    document.getId(), userId);
-            moved.ifPresent(movement -> document.addLine(movement.productId(), movement.quantity(),
-                    scaled(line.countedQuantity()), movement.previousBalance(), null));
+            List<StockMovement> moved = ledger.count(branchId, line.productId(), line.countedQuantity(),
+                    line.serialNumbers(), reference, document.getId(), userId);
+            if (!moved.isEmpty()) {
+                BigDecimal net = moved.stream().map(StockMovement::quantity).reduce(BigDecimal.ZERO, BigDecimal::add);
+                document.addLine(line.productId(), net, scaled(line.countedQuantity()), moved.get(0).previousBalance(),
+                        null);
+            }
             return moved;
         }
         BigDecimal signed = type == InventoryDocumentType.EXIT ? line.quantity().negate() : line.quantity();
         StockMovement moved = ledger.apply(branchId, line.productId(), type.movementType(), signed,
-                type == InventoryDocumentType.ENTRY ? line.unitCost() : null, reference, document.getId(), userId);
+                type == InventoryDocumentType.ENTRY ? line.unitCost() : null, line.serialNumbers(), reference,
+                document.getId(), userId);
         document.addLine(moved.productId(), moved.quantity(), null, moved.previousBalance(), moved.unitCost());
-        return Optional.of(moved);
+        return List.of(moved);
     }
 
     /** The stock of each product the movements changed, as it is after the document. */
