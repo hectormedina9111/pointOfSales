@@ -210,7 +210,7 @@ public class DefaultStockLedger implements StockLedger {
         for (String number : serials) {
             ProductSerial row = rows.get(number);
             if (incoming) {
-                requireNotAvailable(row, number);
+                requireNotAvailable(row, number, type == StockMovementType.TRANSFER_IN);
             } else if (row == null || row.getBranchId() != branch.branchId() || row.getStatus() != SerialStatus.AVAILABLE) {
                 throw new BusinessRuleException("SERIAL_NOT_AVAILABLE",
                         "The serial number is not available in this branch", number);
@@ -228,6 +228,8 @@ public class DefaultStockLedger implements StockLedger {
                 row.enter(branch.branchId(), now, moved.id());
             } else if (type == StockMovementType.SALE_OUT) {
                 row.sell(referenceId, now);
+            } else if (type == StockMovementType.TRANSFER_OUT) {
+                row.dispatch();
             } else {
                 row.remove();
             }
@@ -255,7 +257,7 @@ public class DefaultStockLedger implements StockLedger {
         List<String> entering = listed.stream().filter(number -> !here.contains(number)).toList();
         Map<String, ProductSerial> rows = rowsByNumber(product.id(), entering);
         for (String number : entering) {
-            requireNotAvailable(rows.get(number), number);
+            requireNotAvailable(rows.get(number), number, false);
         }
         Instant now = clock.instant();
         List<StockMovement> moved = new ArrayList<>();
@@ -284,9 +286,19 @@ public class DefaultStockLedger implements StockLedger {
         return moved;
     }
 
-    /** An incoming unit may not be AVAILABLE or IN_TRANSIT anywhere: a unit that left or was removed may come back. */
-    private static void requireNotAvailable(ProductSerial row, String number) {
-        if (row != null && (row.getStatus() == SerialStatus.AVAILABLE || row.getStatus() == SerialStatus.IN_TRANSIT)) {
+    /**
+     * An incoming unit may not be AVAILABLE or IN_TRANSIT anywhere: a unit that left or was removed may come back. A transfer
+     * receipt also accepts a unit that this node sent out and still lists as IN_TRANSIT: the unit is coming back to this
+     * branch, and this node does not know where the other nodes have it.
+     */
+    private static void requireNotAvailable(ProductSerial row, String number, boolean transferReceipt) {
+        if (row == null) {
+            return;
+        }
+        SerialStatus status = row.getStatus();
+        boolean blocked = status == SerialStatus.AVAILABLE
+                || (status == SerialStatus.IN_TRANSIT && !transferReceipt);
+        if (blocked) {
             throw new BusinessRuleException("SERIAL_ALREADY_EXISTS", "The serial number already exists", number);
         }
     }

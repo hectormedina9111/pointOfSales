@@ -78,6 +78,11 @@ public class ProductSerial extends AuditableEntity {
         this.status = SerialStatus.REMOVED;
     }
 
+    /** The unit is sent to another branch. It stays in transit until that branch receives it. */
+    public void dispatch() {
+        this.status = SerialStatus.IN_TRANSIT;
+    }
+
     public long getProductId() {
         return productId;
     }
