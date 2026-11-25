@@ -2046,7 +2046,82 @@
     },
     {
       "v": 2,
-      "name": "9. Errores de ejemplo",
+      "name": "9. Caja y ventas",
+      "folders": [],
+      "requests": [
+        {
+          "v": "4",
+          "name": "Listar cajas de la sucursal",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/cash-registers",
+          "params": [
+            {
+              "key": "branchId",
+              "value": "<<branchId>>",
+              "active": true
+            }
+          ],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Crear caja 001",
+          "method": "POST",
+          "endpoint": "<<baseUrl>>/api/v1/cash-registers",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.env.set(\"cashRegisterId\", String(pw.response.body.id));",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"branchId\": \"<<branchId>>\",\n  \"code\": \"001\",\n  \"name\": \"Caja 1\",\n  \"receiptPrefix\": \"REC-001-001-\",\n  \"active\": true\n}"
+          },
+          "requestVariables": []
+        },
+        {
+          "v": "4",
+          "name": "Listar métodos de pago",
+          "method": "GET",
+          "endpoint": "<<baseUrl>>/api/v1/payment-methods",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "",
+          "auth": {
+            "authType": "inherit",
+            "authActive": true
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": []
+        }
+      ],
+      "auth": {
+        "authType": "inherit",
+        "authActive": true
+      },
+      "headers": []
+    },
+    {
+      "v": 2,
+      "name": "10. Errores de ejemplo",
       "folders": [],
       "requests": [
         {

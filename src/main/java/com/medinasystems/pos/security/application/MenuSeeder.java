@@ -33,10 +33,19 @@ public class MenuSeeder implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(MenuSeeder.class);
     private static final String ADMIN_ROLE = "ADMIN";
 
-    /** One menu entry. The name is data in Spanish; the frontend translates it by its code. */
+    /**
+     * One menu or action entry. The name is data in Spanish; the frontend translates it by its code. ACTION
+     * entries use the same record with no parent, route or icon, and sort order 0.
+     */
     record MenuDefinition(String code, String parentCode, String module, String name, String route, String icon,
                           int sortOrder) {
     }
+
+    /** Action privileges for buttons that need a manager's authorization. Granted to ADMIN, like the menus. */
+    static final List<MenuDefinition> ACTIONS = List.of(
+            new MenuDefinition("ACTION_SALE_DISCOUNT_OVERRIDE", null, "sales", "Autorizar descuento mayor al permitido",
+                    null, null, 0),
+            new MenuDefinition("ACTION_CASH_WITHDRAWAL", null, "cash", "Autorizar retiro de efectivo", null, null, 0));
 
     static final List<MenuDefinition> MENUS = List.of(
             new MenuDefinition("MENU_ORGANIZATION", null, "organization", "Organización", null, "building", 10),
@@ -65,6 +74,18 @@ public class MenuSeeder implements ApplicationRunner {
                     "/stores/nodes", "layout-dashboard", 1),
             new MenuDefinition("MENU_STORES_SYNC_STATUS", "MENU_STORES", "sync", "Estado de sincronización",
                     "/stores/sync-status", "refresh", 2),
+            new MenuDefinition("MENU_SALES", null, "sales", "Ventas", null, "cash-register", 50),
+            new MenuDefinition("MENU_SALES_POS", "MENU_SALES", "sales", "Punto de venta", "/sales/pos",
+                    "shopping-cart", 1),
+            new MenuDefinition("MENU_SALES_LIST", "MENU_SALES", "sales", "Ventas realizadas", "/sales", "receipt", 2),
+            new MenuDefinition("MENU_CASH_SESSION", "MENU_SALES", "cash", "Mi caja", "/cash/session", "cash", 3),
+            new MenuDefinition("MENU_CASH_SESSIONS", "MENU_SALES", "cash", "Sesiones de caja", "/cash/sessions",
+                    "list-check", 4),
+            new MenuDefinition("MENU_SALES_SETTINGS", null, "sales", "Configuración de ventas", null, "settings", 55),
+            new MenuDefinition("MENU_CASH_REGISTERS", "MENU_SALES_SETTINGS", "cash", "Cajas", "/cash/registers",
+                    "device-desktop", 1),
+            new MenuDefinition("MENU_PAYMENT_METHODS", "MENU_SALES_SETTINGS", "sales", "Métodos de pago",
+                    "/sales/payment-methods", "credit-card", 2),
             new MenuDefinition("MENU_AUDIT", null, "audit", "Auditoría", "/audit", "history", 80));
 
     private final PrivilegeRepository privileges;
@@ -82,24 +103,34 @@ public class MenuSeeder implements ApplicationRunner {
                 .orElseThrow(() -> new IllegalStateException("Role ADMIN is missing; check migration V2"));
         int created = 0;
         for (MenuDefinition definition : MENUS) {
-            Privilege menu = privileges.findByCode(definition.code()).orElse(null);
-            if (menu == null) {
-                menu = create(definition);
-                created++;
-            }
-            admin.grant(menu);
+            created += seed(PrivilegeType.MENU, definition, admin);
         }
-        log.info("Menu privileges created: {} of {}", created, MENUS.size());
+        for (MenuDefinition definition : ACTIONS) {
+            created += seed(PrivilegeType.ACTION, definition, admin);
+        }
+        log.info("Menu and action privileges created: {} of {}", created, MENUS.size() + ACTIONS.size());
     }
 
-    private Privilege create(MenuDefinition definition) {
+    /** Creates the privilege when its code is missing, and grants it to ADMIN. Returns 1 when it was created. */
+    private int seed(PrivilegeType type, MenuDefinition definition, Role admin) {
+        Privilege privilege = privileges.findByCode(definition.code()).orElse(null);
+        int created = 0;
+        if (privilege == null) {
+            privilege = create(type, definition);
+            created = 1;
+        }
+        admin.grant(privilege);
+        return created;
+    }
+
+    private Privilege create(PrivilegeType type, MenuDefinition definition) {
         Privilege parent = null;
         if (definition.parentCode() != null) {
             parent = privileges.findByCode(definition.parentCode())
                     .orElseThrow(() -> new IllegalStateException(
                             "Parent menu " + definition.parentCode() + " is missing; keep parents before children"));
         }
-        Privilege menu = Privilege.catalog(PrivilegeType.MENU, definition.code(), definition.name(), null,
+        Privilege menu = Privilege.catalog(type, definition.code(), definition.name(), null,
                 definition.module());
         menu.update(definition.name(), null, parent, definition.route(), definition.icon(),
                 definition.sortOrder(), true);

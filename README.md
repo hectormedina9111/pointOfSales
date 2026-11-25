@@ -53,7 +53,7 @@ Identidad de cada nodo: `GET /api/v1/system/info` (cambiar la IP).
 
 ### 5. Colección Hoppscotch
 
-La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hoppscotch.json` (90 peticiones en 9 carpetas) y dos entornos, `pos-local.hoppscotch-env.json` (central) y `pos-store1.hoppscotch-env.json` (tienda 1). Importarla y recorrer las carpetas en orden, de la 1 a la 9.
+La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hoppscotch.json` (94 peticiones en 10 carpetas) y dos entornos, `pos-local.hoppscotch-env.json` (central) y `pos-store1.hoppscotch-env.json` (tienda 1). Importarla y recorrer las carpetas en orden, de la 1 a la 10.
 
 | Carpeta | Qué prueba |
 |---|---|
@@ -65,7 +65,8 @@ La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hopps
 | 6. Precios | Listas de mayoreo y VIP, escalas por cantidad, vigencias, precio por sucursal y precio de hoy. |
 | 7. Tiendas | Panel de tiendas (central); estado de sincronización y login en la tienda 1 (tienda). |
 | 8. Auditoría | Bitácora de cambios, por entidad y por fechas. |
-| 9. Errores de ejemplo | Respuestas de error esperadas (401, 422). Deben fallar a propósito. |
+| 9. Caja y ventas | Altas y listado de cajas por sucursal, y listado de métodos de pago. |
+| 10. Errores de ejemplo | Respuestas de error esperadas (401, 422). Deben fallar a propósito. |
 
 Antes de empezar, pon la contraseña de `admin` en el entorno (`adminPassword`) y ejecuta **2. Sesión → Login**. Después, **2. Sesión → Cambiar contraseña** y actualiza `adminPassword` con la nueva. El token de acceso dura 15 minutos; si una petición responde 401, ejecuta **Refrescar token**.
 
@@ -155,6 +156,12 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - Escalas de mayoreo (solo en listas `FIXED_PRICE`): `GET/POST/PUT/DELETE /api/v1/price-lists/{id}/items` (filtro `productId`). Cada escala empieza en `minQuantity` (1 por defecto) y no se repite para el mismo producto.
 - Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe ser visible desde el nodo. Sin `date`, el día es hoy en la zona horaria del país (Honduras: UTC-6). La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId`.
 - Lista por defecto de cada sucursal: `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
+
+### Cajas y métodos de pago
+
+- Cajas: `GET/POST/PUT /api/v1/cash-registers` (`/cash-registers/{id}` para una), con filtros `branchId` y `active`. Cada caja pertenece a una sucursal y tiene `code` (único dentro de la sucursal), `name` y `receiptPrefix`. Solo la central las crea o cambia; cada nodo lista las cajas de las sucursales que ve.
+- Métodos de pago: `GET /api/v1/payment-methods` (filtro `active`) y `PUT /api/v1/payment-methods/{id}` para cambiar `name`, `requiresReference`, `allowsChange` y `active`. Los códigos `CASH`, `CARD` y `TRANSFER` los fija el sistema: no hay alta ni cambio de código.
+- Privilegios iniciales: al arrancar, la central concede a CASHIER y MANAGER sus privilegios de caja y venta, una sola vez por privilegio (registro en `role_default_grant`). Una concesión que se quite a mano no vuelve en los siguientes arranques. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 1".
 
 ### Tiendas y activación
 

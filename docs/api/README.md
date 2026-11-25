@@ -4,7 +4,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 | Archivo | Qué es |
 |---|---|
-| `pos-api.hoppscotch.json` | Colección "POS API" con 90 peticiones en 9 carpetas. |
+| `pos-api.hoppscotch.json` | Colección "POS API" con 94 peticiones en 10 carpetas. |
 | `pos-local.hoppscotch-env.json` | Entorno "POS local (central)", apunta a `http://192.168.56.10:8080`. |
 | `pos-store1.hoppscotch-env.json` | Entorno "POS local (tienda 1)", apunta a `http://192.168.56.11:8080`. |
 
@@ -37,7 +37,7 @@ Esta carpeta contiene una colección de Hoppscotch con todos los endpoints actua
 
 ## Cómo recorrer la colección
 
-- Sigue las carpetas en orden, de la 1 a la 9. Cada petición de creación guarda el `id` en el entorno para usarlo en las siguientes.
+- Sigue las carpetas en orden, de la 1 a la 10. Cada petición de creación guarda el `id` en el entorno para usarlo en las siguientes.
 - **Token:** el token de acceso dura 15 minutos. Cuando una petición responda 401, ejecuta **2. Sesión → Refrescar token**.
 - **Sucursales visibles:** `GET /branches` muestra todas las sucursales en la central, y solo la asignada a la tienda en una tienda. Para que el usuario admin entre a una tienda, ejecuta **4. Organización → Asignar sucursales al usuario admin** (`user_branch` solo decide en qué tienda puede iniciar sesión). La variable `userId` se toma de **2. Sesión → Mi perfil**.
 - **Carpeta 8:** son peticiones que deben fallar a propósito. El nombre indica el estado esperado (por ejemplo, `422 SKU repetido`). Si una de ellas no falla, revisa los datos creados antes.
