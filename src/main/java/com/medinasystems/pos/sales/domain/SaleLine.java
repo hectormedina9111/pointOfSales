@@ -79,7 +79,49 @@ public class SaleLine extends AuditableEntity {
     @Column(name = "price_overridden", nullable = false)
     private boolean priceOverridden;
 
+    /** Quantity already returned from this line of a SALE. Always between zero and the quantity. */
+    @Column(name = "returned_quantity", nullable = false, precision = 12, scale = 3)
+    private BigDecimal returnedQuantity = NO_QUANTITY;
+
+    /** For a line of a RETURN: the line of the original sale. Not a foreign key: it may live in another store. */
+    @Column(name = "original_line_id")
+    private Long originalLineId;
+
+    private static final BigDecimal NO_QUANTITY = new BigDecimal("0.000");
+
     protected SaleLine() {
+    }
+
+    /** A line of a return: the product, price and tax are copied from the original line, the amounts are refunded ones. */
+    SaleLine(Sale sale, int lineNumber, SaleLine original, CalculatedReturnLine calculated) {
+        this.sale = sale;
+        this.lineNumber = (short) lineNumber;
+        this.productId = original.productId;
+        this.sku = original.sku;
+        this.description = original.description;
+        this.quantity = calculated.quantity();
+        this.unitPrice = original.unitPrice;
+        this.unitCost = original.unitCost;
+        this.discountAmount = Money.ZERO;
+        this.taxCode = original.taxCode;
+        this.taxRate = original.taxRate;
+        this.taxAmount = calculated.taxAmount();
+        this.subtotal = calculated.subtotal();
+        this.total = calculated.total();
+        this.priceListId = original.priceListId;
+        this.listPrice = original.listPrice;
+        this.priceOverridden = original.priceOverridden;
+        this.originalLineId = original.getId();
+    }
+
+    /** Adds a quantity returned from this line. The caller has checked that it does not exceed what is left. */
+    void addReturned(BigDecimal returned) {
+        this.returnedQuantity = this.returnedQuantity.add(returned);
+    }
+
+    /** True when every unit of the line has been returned. */
+    boolean isFullyReturned() {
+        return returnedQuantity.compareTo(quantity) >= 0;
     }
 
     SaleLine(Sale sale, CalculatedLine calculated) {
@@ -175,5 +217,13 @@ public class SaleLine extends AuditableEntity {
 
     public boolean isPriceOverridden() {
         return priceOverridden;
+    }
+
+    public BigDecimal getReturnedQuantity() {
+        return returnedQuantity;
+    }
+
+    public Long getOriginalLineId() {
+        return originalLineId;
     }
 }

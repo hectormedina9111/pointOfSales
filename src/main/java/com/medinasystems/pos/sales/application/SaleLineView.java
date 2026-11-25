@@ -10,12 +10,14 @@ import com.medinasystems.pos.sales.domain.SaleLine;
 /**
  * A line of a quote or of a sale. {@code unitPrice} is the price the line is sold at and {@code listPrice} the price of
  * the list; {@code priceOverridden} tells whether they differ. {@code discountAmount} includes the line's share of the
- * sale discount; {@code subtotal + taxAmount = total}.
+ * sale discount; {@code subtotal + taxAmount = total}. {@code returnedQuantity} is what came back from a sale line;
+ * {@code originalLineId} is the sale line a return line refunds.
  */
 public record SaleLineView(int lineNumber, long productId, String sku, String description, BigDecimal quantity,
                            BigDecimal unitPrice, BigDecimal listPrice, boolean priceOverridden, String taxCode,
                            BigDecimal taxRate, Long priceListId, DiscountType discountType, BigDecimal discountValue,
-                           BigDecimal discountAmount, BigDecimal subtotal, BigDecimal taxAmount, BigDecimal total) {
+                           BigDecimal discountAmount, BigDecimal subtotal, BigDecimal taxAmount, BigDecimal total,
+                           BigDecimal returnedQuantity, Long originalLineId) {
 
     public static SaleLineView from(CalculatedLine calculated) {
         PricedLine line = calculated.line();
@@ -23,7 +25,8 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                 line.quantity(), line.unitPrice(), line.listPrice(), line.priceOverridden(), line.taxCode(),
                 line.taxRate(), line.priceListId(), line.discount() == null ? null : line.discount().type(),
                 line.discount() == null ? null : line.discount().value(),
-                calculated.discountAmount(), calculated.subtotal(), calculated.taxAmount(), calculated.total());
+                calculated.discountAmount(), calculated.subtotal(), calculated.taxAmount(), calculated.total(),
+                BigDecimal.ZERO, null);
     }
 
     public static SaleLineView from(SaleLine line) {
@@ -31,6 +34,6 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                 line.getDescription(), line.getQuantity(), line.getUnitPrice(), line.getListPrice(),
                 line.isPriceOverridden(), line.getTaxCode(), line.getTaxRate(), line.getPriceListId(),
                 line.getDiscountType(), line.getDiscountValue(), line.getDiscountAmount(), line.getSubtotal(),
-                line.getTaxAmount(), line.getTotal());
+                line.getTaxAmount(), line.getTotal(), line.getReturnedQuantity(), line.getOriginalLineId());
     }
 }

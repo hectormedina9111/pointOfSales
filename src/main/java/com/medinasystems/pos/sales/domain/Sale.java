@@ -30,15 +30,14 @@ import com.medinasystems.pos.shared.BusinessRuleException;
 @Table(name = "sale")
 public class Sale extends AuditableEntity {
 
-    /** The only sale type in 3A; returns (RETURN) come in 3B. */
-    public static final String TYPE_SALE = "SALE";
     /** Ticket: a sale document without CAI. Fiscal invoices come in 3C. */
     public static final String DOCUMENT_TICKET = "TICKET";
     /** Fiscal status of a country without electronic invoicing for this document. */
     public static final String FISCAL_NOT_REQUIRED = "NOT_REQUIRED";
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
-    private String type = TYPE_SALE;
+    private SaleType type = SaleType.SALE;
 
     @Column(name = "internal_number", nullable = false, unique = true)
     private Long internalNumber;
@@ -119,6 +118,27 @@ public class Sale extends AuditableEntity {
     @Column(name = "price_authorized_by")
     private Long priceAuthorizedBy;
 
+    /** RETURN only: the sale this return refunds. Not a foreign key: it may be a sale of another store. */
+    @Column(name = "original_sale_id")
+    private Long originalSaleId;
+
+    /** RETURN only: the receipt number of the original sale, printed without looking it up. */
+    @Column(name = "original_receipt_number", length = 30)
+    private String originalReceiptNumber;
+
+    /** RETURN only: why the goods come back. */
+    @Column(length = 300)
+    private String reason;
+
+    /** RETURN only: how the return is refunded. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refund_method", length = 20)
+    private RefundMethod refundMethod;
+
+    /** RETURN only: who authorized the return, the cashier with the privilege or a manager with credentials. */
+    @Column(name = "return_authorized_by")
+    private Long returnAuthorizedBy;
+
     @Column(length = 500)
     private String notes;
 
@@ -195,6 +215,85 @@ public class Sale extends AuditableEntity {
         this.changeDue = Money.scale2(change);
     }
 
+    /**
+     * Creates the return document of a paid sale. It is a RETURN already paid: it has its receipt number, its refund
+     * payments (none when the refund is a credit note) and the lines that were returned. The original sale is changed
+     * separately with {@link #registerReturn}, in the same transaction.
+     *
+     * @param refunds the refunds, with positive amounts; the sign comes from the type
+     */
+    public static Sale refund(SaleContext context, long internalNumber, Sale original, ReturnTotals totals,
+                              String reason, RefundMethod refundMethod, Long authorizedBy, List<PaymentDraft> refunds,
+                              String receiptNumber, String idempotencyKey, Instant paidAt) {
+        Sale sale = new Sale();
+        sale.type = SaleType.RETURN;
+        sale.internalNumber = internalNumber;
+        sale.status = SaleStatus.PAID;
+        sale.branchId = context.branchId();
+        sale.cashRegisterId = context.cashRegisterId();
+        sale.cashSessionId = context.cashSessionId();
+        sale.cashierId = context.cashierId();
+        sale.customerId = original.customerId;
+        sale.orderType = original.orderType;
+        sale.exclusive = original.exclusive;
+        sale.originalSaleId = original.getId();
+        sale.originalReceiptNumber = original.receiptNumber;
+        sale.reason = reason;
+        sale.refundMethod = refundMethod;
+        sale.returnAuthorizedBy = authorizedBy;
+        sale.subtotal = totals.subtotal();
+        sale.discountTotal = Money.ZERO;
+        sale.exemptAmount = totals.exemptAmount();
+        sale.taxableAmount15 = totals.taxableAmount15();
+        sale.taxableAmount18 = totals.taxableAmount18();
+        sale.taxTotal = totals.taxTotal();
+        sale.total = totals.total();
+        sale.amountPaid = totals.total();
+        sale.changeDue = Money.ZERO;
+        sale.receiptNumber = receiptNumber;
+        sale.idempotencyKey = idempotencyKey;
+        sale.paidAt = paidAt;
+        int number = 1;
+        for (CalculatedReturnLine line : totals.lines()) {
+            sale.lines.add(new SaleLine(sale, number++, line.original(), line));
+        }
+        for (PaymentDraft refund : refunds) {
+            sale.payments.add(new Payment(sale, refund, paidAt));
+        }
+        return sale;
+    }
+
+    /** True when this is a paid sale that may still be returned: a SALE that is paid or partly returned. */
+    public boolean isReturnable() {
+        return type == SaleType.SALE
+                && (status == SaleStatus.PAID || status == SaleStatus.PARTIALLY_RETURNED);
+    }
+
+    /**
+     * Records the quantities returned on the lines of this sale and moves it to RETURNED when every line is fully
+     * returned, or to PARTIALLY_RETURNED otherwise.
+     *
+     * @param returnedByLine the quantity returned per line id; the caller has checked the quantities
+     */
+    public void registerReturn(Map<Long, BigDecimal> returnedByLine) {
+        if (!isReturnable()) {
+            throw new BusinessRuleException("RETURN_NOT_ALLOWED", "Only a paid sale can be returned");
+        }
+        for (SaleLine line : lines) {
+            BigDecimal returned = returnedByLine.get(line.getId());
+            if (returned != null) {
+                line.addReturned(returned);
+            }
+        }
+        boolean allReturned = lines.stream().allMatch(SaleLine::isFullyReturned);
+        this.status = allReturned ? SaleStatus.RETURNED : SaleStatus.PARTIALLY_RETURNED;
+    }
+
+    /** True when the sale has been charged: it is PAID, PARTIALLY_RETURNED or RETURNED, and has a receipt. */
+    public boolean isCharged() {
+        return status != SaleStatus.ON_HOLD;
+    }
+
     private void replaceContent(SaleContext context, SaleTotals totals, SaleOrder order) {
         this.branchId = context.branchId();
         this.cashRegisterId = context.cashRegisterId();
@@ -236,8 +335,28 @@ public class Sale extends AuditableEntity {
                 .subtract(taxTotal));
     }
 
-    public String getType() {
+    public SaleType getType() {
         return type;
+    }
+
+    public Long getOriginalSaleId() {
+        return originalSaleId;
+    }
+
+    public String getOriginalReceiptNumber() {
+        return originalReceiptNumber;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public RefundMethod getRefundMethod() {
+        return refundMethod;
+    }
+
+    public Long getReturnAuthorizedBy() {
+        return returnAuthorizedBy;
     }
 
     public Long getInternalNumber() {

@@ -31,7 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.medinasystems.pos.sales.application.SaleData;
 import com.medinasystems.pos.sales.application.SaleFilter;
 import com.medinasystems.pos.sales.application.SaleQuoteView;
+import com.medinasystems.pos.sales.application.ReturnQuoteView;
+import com.medinasystems.pos.sales.application.ReturnableView;
 import com.medinasystems.pos.sales.application.SaleResult;
+import com.medinasystems.pos.sales.application.SaleReturnService;
 import com.medinasystems.pos.sales.application.SaleService;
 import com.medinasystems.pos.sales.application.SaleSummaryView;
 import com.medinasystems.pos.sales.application.SaleView;
@@ -39,6 +42,7 @@ import com.medinasystems.pos.sales.application.TicketView;
 import com.medinasystems.pos.sales.domain.DiscountType;
 import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.SaleStatus;
+import com.medinasystems.pos.sales.domain.SaleType;
 import com.medinasystems.pos.shared.StoreOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
 
@@ -51,9 +55,11 @@ import com.medinasystems.pos.shared.web.PageResponse;
 public class SaleController {
 
     private final SaleService sales;
+    private final SaleReturnService returns;
 
-    public SaleController(SaleService sales) {
+    public SaleController(SaleService sales, SaleReturnService returns) {
         this.sales = sales;
+        this.returns = returns;
     }
 
     @PostMapping("/quote")
@@ -119,6 +125,7 @@ public class SaleController {
     @GetMapping
     public PageResponse<SaleSummaryView> list(@RequestParam(required = false) SaleStatus status,
                                               @RequestParam(required = false) OrderType orderType,
+                                              @RequestParam(required = false) SaleType type,
                                               @RequestParam(required = false) Long cashSessionId,
                                               @RequestParam(required = false) Long cashRegisterId,
                                               @RequestParam(required = false) Long cashierId,
@@ -131,8 +138,8 @@ public class SaleController {
                                               @RequestParam(required = false) Instant to,
                                               @PageableDefault(sort = {"createdAt", "id"},
                                                       direction = Sort.Direction.DESC) Pageable pageable) {
-        SaleFilter filter = new SaleFilter(branchId, cashierId, status, orderType, cashSessionId, cashRegisterId,
-                customerId, search, minTotal, maxTotal, from, to);
+        SaleFilter filter = new SaleFilter(branchId, cashierId, status, orderType, type, cashSessionId,
+                cashRegisterId, customerId, search, minTotal, maxTotal, from, to);
         return PageResponse.from(sales.list(filter, pageable));
     }
 
@@ -144,6 +151,27 @@ public class SaleController {
     @GetMapping("/{id}/ticket")
     public TicketView ticket(@PathVariable Long id) {
         return sales.ticket(id);
+    }
+
+    /** What can be returned from a sale: the lines left to return and the payments that can be refunded. */
+    @GetMapping("/{id}/returnable")
+    public ReturnableView returnable(@PathVariable Long id) {
+        return returns.returnable(id);
+    }
+
+    /** The amounts a return of these lines would refund. Stores nothing and needs no authorization. */
+    @PostMapping("/{id}/return-quote")
+    @StoreOnly
+    public ReturnQuoteView returnQuote(@PathVariable Long id, @Valid @RequestBody ReturnQuoteRequest request) {
+        return returns.quote(id, request.toData());
+    }
+
+    /** Creates a return: 201 with the RETURN document, or 200 when the idempotency key already created it. */
+    @PostMapping("/{id}/returns")
+    @StoreOnly
+    public ResponseEntity<SaleView> createReturn(@PathVariable Long id, @Valid @RequestBody ReturnRequest request) {
+        SaleResult result = returns.create(request.toData(id));
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.sale());
     }
 
     /**
@@ -228,6 +256,49 @@ public class SaleController {
         SaleData.HoldCheckout toData(long holdId) {
             return new SaleData.HoldCheckout(holdId, payments.stream().map(payment -> payment.toData()).toList(),
                     idempotencyKey, notes);
+        }
+    }
+
+    /** One line to return: a line of the original sale and the quantity that comes back. */
+    public record ReturnLineRequest(@NotNull Long saleLineId, @NotNull @Positive BigDecimal quantity) {
+
+        SaleData.ReturnLine toData() {
+            return new SaleData.ReturnLine(saleLineId, quantity);
+        }
+    }
+
+    public record ReturnQuoteRequest(@NotEmpty @Valid List<ReturnLineRequest> lines) {
+
+        List<SaleData.ReturnLine> toData() {
+            return lines.stream().map(line -> line.toData()).toList();
+        }
+    }
+
+    /** A refund of a return on the day of the sale: the method, the amount and the reference when the method needs it. */
+    public record RefundRequest(@NotBlank @Size(max = 20) String paymentMethodCode,
+                                @NotNull @Positive BigDecimal amount,
+                                @Size(max = 60) String reference) {
+
+        SaleData.PaymentLine toData() {
+            return new SaleData.PaymentLine(paymentMethodCode, amount, null, reference, null);
+        }
+    }
+
+    /**
+     * A return. {@code refunds} may be empty: then the return is refunded with a credit note, which is only allowed on a
+     * day after the sale. The authorization is needed when the user does not hold the return privilege.
+     */
+    public record ReturnRequest(@NotEmpty @Valid List<ReturnLineRequest> lines,
+                                @NotBlank @Size(max = 300) String reason,
+                                @Valid List<RefundRequest> refunds,
+                                @Valid AuthorizationRequest authorization,
+                                @NotBlank @Size(max = 64) String idempotencyKey) {
+
+        SaleData.Return toData(long saleId) {
+            List<SaleData.PaymentLine> refundLines = refunds == null
+                    ? List.of() : refunds.stream().map(refund -> refund.toData()).toList();
+            return new SaleData.Return(saleId, lines.stream().map(line -> line.toData()).toList(), reason,
+                    refundLines, authorization == null ? null : authorization.toData(), idempotencyKey);
         }
     }
 }

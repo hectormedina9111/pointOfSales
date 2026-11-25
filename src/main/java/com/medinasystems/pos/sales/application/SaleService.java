@@ -36,6 +36,7 @@ import com.medinasystems.pos.organization.CompanyDirectory;
 import com.medinasystems.pos.organization.CompanyInfo;
 import com.medinasystems.pos.pricing.PriceQuote;
 import com.medinasystems.pos.pricing.ProductPricing;
+import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.Discount;
 import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.PaymentDraft;
@@ -49,6 +50,8 @@ import com.medinasystems.pos.sales.domain.SaleContext;
 import com.medinasystems.pos.sales.domain.SaleOrder;
 import com.medinasystems.pos.sales.domain.SaleStatus;
 import com.medinasystems.pos.sales.domain.SaleTotals;
+import com.medinasystems.pos.sales.domain.SaleType;
+import com.medinasystems.pos.sales.infrastructure.CreditNoteRepository;
 import com.medinasystems.pos.sales.infrastructure.PaymentMethodRepository;
 import com.medinasystems.pos.sales.infrastructure.ReceiptCounterRepository;
 import com.medinasystems.pos.sales.infrastructure.SaleRepository;
@@ -80,6 +83,7 @@ public class SaleService {
     static final String PRICE_PRIVILEGE = "ACTION_SALE_PRICE_OVERRIDE";
 
     private final SaleRepository sales;
+    private final CreditNoteRepository creditNotes;
     private final PaymentMethodRepository methods;
     private final ReceiptCounterRepository counters;
     private final SaleableProducts products;
@@ -98,13 +102,15 @@ public class SaleService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
-    public SaleService(SaleRepository sales, PaymentMethodRepository methods, ReceiptCounterRepository counters,
+    public SaleService(SaleRepository sales, CreditNoteRepository creditNotes, PaymentMethodRepository methods,
+                       ReceiptCounterRepository counters,
                        SaleableProducts products, ProductPricing pricing, CustomerDirectory customers,
                        OpenSessions openSessions, BranchDirectory branches, CompanyDirectory companies,
                        CashRegisterDirectory registers, UserDirectory users, ActionAuthorizer authorizer,
                        BranchScope scope, SalesProperties properties, Outbox outbox,
                        AuditorAware<String> auditor, ApplicationEventPublisher events, Clock clock) {
         this.sales = sales;
+        this.creditNotes = creditNotes;
         this.methods = methods;
         this.counters = counters;
         this.products = products;
@@ -277,7 +283,7 @@ public class SaleService {
     @Transactional(readOnly = true)
     public TicketView ticket(long id) {
         Sale sale = findVisible(id);
-        if (sale.getStatus() != SaleStatus.PAID) {
+        if (!sale.isCharged()) {
             throw new BusinessRuleException("SALE_NOT_PAID", "Only a paid sale has a ticket");
         }
         CompanyInfo company = companies.find().orElseThrow(() -> new BusinessRuleException(
@@ -289,8 +295,9 @@ public class SaleService {
         UserInfo cashier = users.find(sale.getCashierId())
                 .orElseThrow(() -> new ResourceNotFoundException("app_user", sale.getCashierId()));
         CustomerInfo customer = findCustomer(sale.getCustomerId());
+        CreditNote creditNote = creditNotes.findByReturnSaleId(sale.getId()).orElse(null);
         ZoneId zone = ZoneId.of(company.timeZone());
-        return TicketView.of(sale, company, branch, register, cashier, customer, zone);
+        return TicketView.of(sale, company, branch, register, cashier, customer, creditNote, zone);
     }
 
     /**
@@ -308,7 +315,7 @@ public class SaleService {
         OpenSessionInfo session = currentSession(userId);
         // Serializes the charges of the register. A second request with the same key waits here and then finds the
         // sale that the first one committed.
-        ReceiptCounter counter = lockCounter(session.cashRegisterId());
+        ReceiptCounter counter = lockCounter(session.cashRegisterId(), ReceiptCounter.SALE);
         charged = sales.findByIdempotencyKey(idempotencyKey);
         if (charged.isPresent()) {
             return new SaleResult(view(charged.get()), false);
@@ -381,7 +388,7 @@ public class SaleService {
      *
      * @throws BusinessRuleException with {@code code} when the change needs an authorization and none was given
      */
-    private Long authorizedBy(boolean required, String privilege, SaleData.Authorization authorization, long userId,
+    Long authorizedBy(boolean required, String privilege, SaleData.Authorization authorization, long userId,
                               String code, String message) {
         if (!required) {
             return null;
@@ -395,7 +402,7 @@ public class SaleService {
         return authorizer.authorize(authorization.username(), authorization.password(), privilege);
     }
 
-    private List<PaymentDraft> paymentDrafts(List<SaleData.PaymentLine> payments) {
+    List<PaymentDraft> paymentDrafts(List<SaleData.PaymentLine> payments) {
         List<PaymentDraft> drafts = new ArrayList<>();
         for (SaleData.PaymentLine payment : payments == null ? List.<SaleData.PaymentLine>of() : payments) {
             PaymentMethod method = methods.findByCode(payment.paymentMethodCode()).orElseThrow(
@@ -410,25 +417,26 @@ public class SaleService {
      * The counter of the register, locked for the rest of the charge. It is created first with ON CONFLICT DO NOTHING, so
      * two first charges of a register do not fail on the primary key: the second waits, then finds the row.
      */
-    private ReceiptCounter lockCounter(long cashRegisterId) {
-        counters.insertIfAbsent(cashRegisterId, clock.instant(), auditor.getCurrentAuditor().orElse("system"));
-        return counters.findForUpdate(cashRegisterId)
+    ReceiptCounter lockCounter(long cashRegisterId, String documentType) {
+        counters.insertIfAbsent(cashRegisterId, documentType, clock.instant(),
+                auditor.getCurrentAuditor().orElse("system"));
+        return counters.findForUpdate(cashRegisterId, documentType)
                 .orElseThrow(() -> new IllegalStateException("The receipt counter of the register is missing"));
     }
 
-    private Sale findHold(long id, long cashRegisterId) {
+    Sale findHold(long id, long cashRegisterId) {
         return sales.findByIdAndStatusAndCashRegisterId(id, SaleStatus.ON_HOLD, cashRegisterId)
                 .orElseThrow(() -> new ResourceNotFoundException("sale", id));
     }
 
     /** A sale the node cannot see answers 404, as if it did not exist. */
-    private Sale findVisible(long id) {
+    Sale findVisible(long id) {
         return sales.findById(id).filter(sale -> scope.canSee(sale.getBranchId()))
                 .orElseThrow(() -> new ResourceNotFoundException("sale", id));
     }
 
     /** The customer of an order: the final consumer when none is named. The customer must exist on this node. */
-    private CustomerInfo findCustomer(Long customerId) {
+    CustomerInfo findCustomer(Long customerId) {
         long id = customerId == null ? CustomerDirectory.FINAL_CONSUMER_ID : customerId;
         return customers.find(id).orElseThrow(() -> new ResourceNotFoundException("customer", id));
     }
@@ -442,8 +450,19 @@ public class SaleService {
         return customer;
     }
 
-    private SaleView view(Sale sale) {
-        return SaleView.from(sale, findCustomer(sale.getCustomerId()));
+    /**
+     * The view of a sale or a return. A sale lists the returns that point to it; a return carries the credit note it issued.
+     */
+    SaleView view(Sale sale) {
+        List<SaleView.ReturnRef> returns = sales.findByOriginalSaleIdAndType(sale.getId(), SaleType.RETURN).stream()
+                .map(ret -> new SaleView.ReturnRef(ret.getId(), ret.getReceiptNumber(), ret.getTotal(),
+                        ret.getCreatedAt()))
+                .toList();
+        SaleView.CreditNoteRef creditNote = creditNotes.findByReturnSaleId(sale.getId())
+                .map(note -> new SaleView.CreditNoteRef(note.getId(), note.getNumber(), note.getAmount(),
+                        note.getBalance()))
+                .orElse(null);
+        return SaleView.from(sale, findCustomer(sale.getCustomerId()), returns, creditNote);
     }
 
     /** Lists a page of sales, looking up each customer once even when many sales share it. */
@@ -455,17 +474,17 @@ public class SaleService {
         return page.map(sale -> SaleSummaryView.from(sale, byCustomer.get(sale.getCustomerId())));
     }
 
-    private OpenSessionInfo currentSession(long userId) {
+    OpenSessionInfo currentSession(long userId) {
         return openSessions.currentFor(userId)
                 .orElseThrow(() -> new BusinessRuleException("NO_OPEN_SESSION", "The cashier has no open cash session"));
     }
 
-    private long storeBranchId() {
+    long storeBranchId() {
         return scope.nodeBranchId().orElseThrow(
                 () -> new BusinessRuleException("STORE_BRANCH_REQUIRED", "This store has no branch assigned"));
     }
 
-    private static SaleContext context(OpenSessionInfo session, long userId) {
+    static SaleContext context(OpenSessionInfo session, long userId) {
         return new SaleContext(session.branchId(), session.cashRegisterId(), session.sessionId(), userId);
     }
 
@@ -486,7 +505,7 @@ public class SaleService {
         return values;
     }
 
-    private static long currentUserId() {
+    static long currentUserId() {
         if (SecurityContextHolder.getContext().getAuthentication() instanceof JwtAuthenticationToken jwt
                 && jwt.getToken().getClaim("uid") instanceof Number uid) {
             return uid.longValue();
