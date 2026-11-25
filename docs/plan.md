@@ -699,7 +699,7 @@ hn\_**fiscal\_range** (autorización de numeración por caja y tipo de documento
 | change\_due | NUMERIC(14,2) | NOT NULL, DEFAULT 0 | Vuelto; solo SALE |
 | paid\_at | TIMESTAMPTZ |  | Fecha de cobro o de reembolso |
 | reason | VARCHAR(300) | Obligatorio si RETURN | Motivo de la devolución |
-| refund\_method | VARCHAR(20) | Obligatorio si RETURN | CASH, ORIGINAL\_METHOD, STORE\_CREDIT |
+| refund\_method | VARCHAR(20) | Obligatorio si RETURN | CASH, ORIGINAL\_METHOD, CREDIT\_NOTE |
 | authorized\_by | BIGINT | FK app\_user | Gerente que autorizó la devolución o la anulación |
 | cancel\_reason | VARCHAR(300) |  |  |
 | canceled\_by | BIGINT | FK app\_user |  |
@@ -2114,3 +2114,66 @@ Este paso implementa "Orden y cobro" y, además, la garantía de que ningún id 
 - **Orden:** por defecto `createdAt DESC, id DESC`. `sort` acepta cualquier propiedad de la venta; no hay un patrón previo en el proyecto para propiedades inválidas, así que una propiedad inexistente todavía responde 500. Queda pendiente un manejo común para todos los listados.
 - **Detalle:** `GET /api/v1/sales/{id}` devuelve cualquier estado, también `ON_HOLD`. Se aplica la misma regla que al listado: la sucursal que el nodo ve, y para el cajero sin `ACTION_SALES_VIEW_ALL` solo sus propias ventas. Lo demás responde 404, como si la venta no existiera. Antes, el detalle no revisaba al cajero.
 - **Órdenes en espera solo existen en la tienda.** Solo las ventas `PAID` suben a la central; las `ON_HOLD` nunca llegan a ella. La pantalla de órdenes de la central solo muestra ventas cobradas.
+
+### Decisiones de implementación: 3B paso 1 (devoluciones)
+
+**Migración V18.** Desviaciones respecto del paso:
+
+- `sale.type`, `sale_line.returned_quantity`, `sale_line.original_line_id` y `sale_line.restock` ya existían en V14. V18 solo agrega el `CHECK` de tipo, quita la llave foránea de `original_line_id` (una devolución puede apuntar a una venta de otra tienda) y extiende el `CHECK` de estados.
+- `sale.refund_method` es obligatorio en RETURN, como dice este modelo; el `CHECK` lo exige junto con el motivo y la venta original.
+- `credit_note` tiene `UNIQUE (return_sale_id)`: una devolución emite a lo sumo una nota de crédito.
+- `cash_register_counter` pasa a llave `(cash_register_id, document_type)`; las filas existentes quedan como `SALE`.
+
+**Zona horaria.** La fecha "mismo día" usa la zona horaria de la empresa (`CompanyInfo.timeZone`), la misma que el ticket. No se agregó `pos.business-time-zone`. Si no hay empresa configurada, responde `COMPANY_NOT_CONFIGURED`.
+
+**Numeración.** Cada caja tiene un correlativo por tipo de documento: ventas (`prefijo` + 8 dígitos, sin cambios), devoluciones (`prefijo-D` + 6 dígitos) y notas de crédito (`prefijo-NC` + 6 dígitos). El número interno sigue en `sale_internal_number_seq`.
+
+**Montos (`ReturnCalculator`, dominio puro).**
+
+- El neto de cada línea original es su `total` (ya con descuento de línea, parte del descuento de venta e ISV).
+- Para una cantidad `q` de una línea con cantidad `Q`: `monto = round(neto × q / Q)`. Si `q` es todo lo que queda de la línea, `monto = neto − lo ya reembolsado de esa línea`, así devolver todo reembolsa exactamente lo cobrado.
+- Base e ISV se calculan hacia atrás con la tasa de la línea original.
+- El subtotal de la devolución es la base del reembolso; `discount_total` queda en 0 y las líneas de devolución no repiten el descuento (`discount_amount` = 0).
+- Una devolución de total cero se rechaza (`RETURN_TOTAL_ZERO`): una nota o un reembolso de cero no tienen sentido y un pago debe ser mayor que cero.
+
+**Reembolso (`RefundRules`).**
+
+- Mismo día: `refunds` obligatorio. Cada método es `CASH` o uno con el que se cobró la venta. Un método que no es efectivo no puede pasar de lo pagado con él menos lo ya reembolsado (`REFUND_EXCEEDS_PAID`). Las reglas de pago (método activo, referencia obligatoria, monto mayor que cero) son las de `PaymentRules`. La suma debe ser el total (`RETURN_REFUND_MISMATCH`).
+- `refund_method` = `CASH` si todos los reembolsos son efectivo; si no, `ORIGINAL_METHOD`.
+- Otro día: `refunds` debe ir vacío (`REFUND_METHOD_NOT_ALLOWED`) y se emite la nota de crédito por el total.
+
+**Autorización.** Quien tiene `ACTION_SALE_RETURN` firma su propia devolución. Si no, hace falta `authorization` de un usuario con ese privilegio (`RETURN_AUTHORIZATION_REQUIRED` si falta). Las validaciones de la devolución corren antes de pedir la autorización, para que una contraseña no se gaste en una petición inválida. `return_authorized_by` guarda quién autorizó.
+
+**Concurrencia.** La venta original se bloquea con `SELECT … FOR UPDATE` antes de leer sus cantidades; los correlativos de la caja también se bloquean. La clave de idempotencia se revisa antes y después del bloqueo; si ya existe, responde 200 con la devolución que la creó.
+
+**Caja.** `SessionCollections` suma los pagos de las ventas en estado `PAID`, `PARTIALLY_RETURNED` y `RETURNED` (una venta devuelta en parte no debe salir del arqueo). Los reembolsos de devoluciones restan por método, en la sesión donde se devolvió. La nota de crédito no mueve caja.
+
+**Subida a la central.** La devolución sube con el evento `SALE_PAID` (`type = RETURN`), con su nota de crédito en `creditNote` cuando existe. Sin pagos es válida solo para devoluciones. La central:
+
+- responde `RETRY` con `ORIGINAL_SALE_MISSING` u `ORIGINAL_LINE_MISSING` si la venta o sus líneas aún no llegaron;
+- responde `REJECTED` con `RETURN_QUANTITY_EXCEEDED` si la cantidad ya no cabe en la línea original. Es una comprobación de integridad para no violar el `CHECK` de la base, no una revalidación de negocio;
+- inserta la devolución, sus líneas, sus pagos y la nota de crédito (con `synced_at` = ahora), suma las cantidades a las líneas originales y recalcula el estado de la venta original (`RETURNED` o `PARTIALLY_RETURNED`).
+
+Los ids de la devolución, sus líneas, sus pagos y la nota de crédito se validan contra el rango de la tienda.
+
+**API.**
+
+| Método y ruta | Privilegio |
+| --- | --- |
+| `GET /api/v1/sales/{id}/returnable` | `GET_SALES_ID_RETURNABLE` |
+| `POST /api/v1/sales/{id}/return-quote` | `POST_SALES_ID_RETURN_QUOTE` (solo tienda) |
+| `POST /api/v1/sales/{id}/returns` | `POST_SALES_ID_RETURNS` (solo tienda); 201, o 200 si la clave ya existe |
+| `GET /api/v1/sales?type=` | `GET_SALES` (filtro nuevo) |
+| `GET /api/v1/credit-notes` | `GET_CREDIT_NOTES` (filtros y paginación en la base de datos) |
+| `GET /api/v1/credit-notes/{id}` | `GET_CREDIT_NOTES_ID` |
+
+Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con los guiones convertidos en guion bajo. Privilegios de acción y menú: `ACTION_SALE_RETURN` (gerente, con su autorización), `MENU_CREDIT_NOTES` (ruta `/credit-notes`, bajo Ventas). El menú Órdenes sigue en 2; el de notas de crédito ocupa el 3 y "Mi caja" y "Sesiones de caja" pasan al 4 y al 5.
+
+**Vistas.** `SaleView` lista las devoluciones de una venta (`returns`) y, en una devolución, su nota de crédito (`creditNote`); en una venta, `creditNote` es `null`. `SaleSummaryView`, `SaleView` y `TicketView` llevan `type`, la venta original y el motivo. El ticket de una devolución muestra la nota de crédito cuando existe.
+
+**Pendiente de otros pasos.**
+
+- Restock (`sale_line.restock`) no se usa: el inventario llega después.
+- Devolver una venta de otra tienda, reservas (`sale_return_claim`) y conflictos: paso 3.
+- Usar el saldo de la nota de crédito en un cobro: paso 2.
+- Sin compilar ni probar en esta sesión: `./mvnw verify` y el CI quedan para verificar.
