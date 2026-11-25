@@ -32,6 +32,9 @@ public final class SyncTables {
             SyncTable.main("price_list_item"),
             SyncTable.main("cash_register"),
             SyncTable.main("payment_method"),
+            SyncTable.main("inventory_transfer"),
+            SyncTable.main("inventory_transfer_line"),
+            SyncTable.main("inventory_transfer_line_serial"),
             SyncTable.child("user_role", "app_user", "user_id"),
             SyncTable.child("user_branch", "app_user", "user_id"),
             SyncTable.child("role_privilege", "role", "role_id"));
