@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -35,6 +36,7 @@ import com.medinasystems.pos.sales.application.SaleSummaryView;
 import com.medinasystems.pos.sales.application.SaleView;
 import com.medinasystems.pos.sales.application.TicketView;
 import com.medinasystems.pos.sales.domain.DiscountType;
+import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.SaleStatus;
 import com.medinasystems.pos.shared.StoreOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
@@ -64,6 +66,22 @@ public class SaleController {
     @StoreOnly
     public SaleView createHold(@Valid @RequestBody DraftRequest request) {
         return sales.createHold(request.toData());
+    }
+
+    /** Replaces the content of a hold of the open register: its customer, order type, lines, discount and notes. */
+    @PutMapping("/holds/{id}")
+    @StoreOnly
+    public SaleView updateHold(@PathVariable Long id, @Valid @RequestBody DraftRequest request) {
+        return sales.updateHold(id, request.toData());
+    }
+
+    /** Charges a hold with its stored lines: 201 with the sale, or 200 when the idempotency key already charged it. */
+    @PostMapping("/holds/{id}/checkout")
+    @StoreOnly
+    public ResponseEntity<SaleView> checkoutHold(@PathVariable Long id,
+                                                 @Valid @RequestBody HoldCheckoutRequest request) {
+        SaleResult result = sales.checkoutHold(request.toData(id));
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.sale());
     }
 
     @GetMapping("/holds")
@@ -114,24 +132,34 @@ public class SaleController {
         return sales.ticket(id);
     }
 
+    /**
+     * One line. {@code unitPrice} is optional: without it the line sells at the list price; with another price the line
+     * is an override, which needs an authorization.
+     */
     public record LineRequest(@NotNull Long productId,
                               @NotNull @Positive BigDecimal quantity,
                               DiscountType discountType,
-                              @PositiveOrZero BigDecimal discountValue) {
+                              @PositiveOrZero BigDecimal discountValue,
+                              @Positive BigDecimal unitPrice) {
 
         SaleData.Line toData() {
-            return new SaleData.Line(productId, quantity, discountType, discountValue);
+            return new SaleData.Line(productId, quantity, discountType, discountValue, unitPrice);
         }
     }
 
+    /** A draft order for quotes and holds. A null customer is the final consumer; a null order type is cash. */
     public record DraftRequest(@NotEmpty @Valid List<LineRequest> lines,
                                DiscountType discountType,
                                @PositiveOrZero BigDecimal discountValue,
+                               Long customerId,
+                               OrderType orderType,
+                               @Valid AuthorizationRequest authorization,
                                @Size(max = 500) String notes) {
 
         SaleData.Draft toData() {
             return new SaleData.Draft(lines.stream().map(line -> line.toData()).toList(), discountType,
-                    discountValue, notes);
+                    discountValue, customerId, orderType, authorization == null ? null : authorization.toData(),
+                    notes);
         }
     }
 
@@ -164,6 +192,8 @@ public class SaleController {
                                   @NotEmpty @Valid List<LineRequest> lines,
                                   DiscountType discountType,
                                   @PositiveOrZero BigDecimal discountValue,
+                                  Long customerId,
+                                  OrderType orderType,
                                   @NotEmpty @Valid List<PaymentRequest> payments,
                                   @NotBlank @Size(max = 64) String idempotencyKey,
                                   @Valid AuthorizationRequest authorization,
@@ -171,8 +201,19 @@ public class SaleController {
 
         SaleData.Checkout toData() {
             return new SaleData.Checkout(holdId, lines.stream().map(line -> line.toData()).toList(), discountType,
-                    discountValue, payments.stream().map(payment -> payment.toData()).toList(), idempotencyKey,
-                    authorization == null ? null : authorization.toData(), notes);
+                    discountValue, customerId, orderType, payments.stream().map(payment -> payment.toData()).toList(),
+                    idempotencyKey, authorization == null ? null : authorization.toData(), notes);
+        }
+    }
+
+    /** Charge of a hold. The lines and prices come from the hold, so only the payments are sent. */
+    public record HoldCheckoutRequest(@NotEmpty @Valid List<PaymentRequest> payments,
+                                      @NotBlank @Size(max = 64) String idempotencyKey,
+                                      @Size(max = 500) String notes) {
+
+        SaleData.HoldCheckout toData(long holdId) {
+            return new SaleData.HoldCheckout(holdId, payments.stream().map(payment -> payment.toData()).toList(),
+                    idempotencyKey, notes);
         }
     }
 }

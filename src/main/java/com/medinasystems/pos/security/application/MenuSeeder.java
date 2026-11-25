@@ -45,6 +45,7 @@ public class MenuSeeder implements ApplicationRunner {
     static final List<MenuDefinition> ACTIONS = List.of(
             new MenuDefinition("ACTION_SALE_DISCOUNT_OVERRIDE", null, "sales", "Autorizar descuento mayor al permitido",
                     null, null, 0),
+            new MenuDefinition("ACTION_SALE_PRICE_OVERRIDE", null, "sales", "Autorizar cambio de precio", null, null, 0),
             new MenuDefinition("ACTION_CASH_WITHDRAWAL", null, "cash", "Autorizar retiro de efectivo", null, null, 0),
             new MenuDefinition("ACTION_SALES_VIEW_ALL", null, "sales", "Ver todas las ventas de la tienda", null,
                     null, 0));

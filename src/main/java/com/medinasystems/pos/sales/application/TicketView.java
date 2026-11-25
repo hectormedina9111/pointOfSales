@@ -8,8 +8,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 import com.medinasystems.pos.cash.CashRegisterInfo;
+import com.medinasystems.pos.customer.CustomerInfo;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.organization.CompanyInfo;
+import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.security.UserInfo;
 
@@ -18,8 +20,10 @@ import com.medinasystems.pos.security.UserInfo;
  * {@code timeZone}. The printing itself happens in the browser.
  */
 public record TicketView(TicketCompany company, TicketBranch branch, String cashRegisterName, String receiptNumber,
-                         LocalDate date, LocalTime time, String timeZone, String cashierName, List<TicketLine> lines,
-                         SaleTotalsView totals, List<PaymentView> payments, BigDecimal changeDue) {
+                         LocalDate date, LocalTime time, String timeZone, String cashierName, Long customerId,
+                         String customerName, String customerDocumentType, String customerDocumentNumber,
+                         OrderType orderType, List<TicketLine> lines, SaleTotalsView totals,
+                         List<PaymentView> payments, BigDecimal changeDue) {
 
     public record TicketCompany(String legalName, String tradeName, String taxId) {
     }
@@ -33,7 +37,7 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
     }
 
     public static TicketView of(Sale sale, CompanyInfo company, BranchInfo branch, CashRegisterInfo register,
-                                UserInfo cashier, ZoneId zone) {
+                                UserInfo cashier, CustomerInfo customer, ZoneId zone) {
         var local = sale.getPaidAt().atZone(zone);
         return new TicketView(
                 new TicketCompany(company.legalName(), company.tradeName(), company.taxId()),
@@ -44,6 +48,11 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
                 local.toLocalTime().truncatedTo(ChronoUnit.SECONDS),
                 zone.getId(),
                 cashier.fullName(),
+                customer.id(),
+                customer.displayName(),
+                customer.documentType(),
+                customer.documentNumber(),
+                sale.getOrderType(),
                 sale.getLines().stream().map(line -> new TicketLine(line.getDescription(), line.getQuantity(),
                         line.getUnitPrice(), line.getDiscountAmount(), line.getTotal())).toList(),
                 SaleTotalsView.from(sale),

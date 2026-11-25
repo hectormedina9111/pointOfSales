@@ -2,18 +2,27 @@ package com.medinasystems.pos.sales.application;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Objects;
 
+import com.medinasystems.pos.customer.CustomerInfo;
+import com.medinasystems.pos.sales.domain.OrderType;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.sales.domain.SaleStatus;
 
-/** A sale as listed: without lines and payments. {@code branchId} shows which store the sale came from. */
+/**
+ * A sale as listed: without lines and payments. {@code branchId} shows which store the sale came from; the customer
+ * fields show who bought.
+ */
 public record SaleSummaryView(Long id, Long internalNumber, String receiptNumber, SaleStatus status, Long branchId,
-                              Long cashRegisterId, Long cashSessionId, Long cashierId, BigDecimal total,
-                              Instant paidAt, Instant createdAt) {
+                              Long cashRegisterId, Long cashSessionId, Long cashierId, Long customerId,
+                              String customerName, String customerDocumentType, String customerDocumentNumber,
+                              OrderType orderType, BigDecimal total, Instant paidAt, Instant createdAt) {
 
-    public static SaleSummaryView from(Sale sale) {
-        return new SaleSummaryView(sale.getId(), sale.getInternalNumber(), sale.getReceiptNumber(),
-                sale.getStatus(), sale.getBranchId(), sale.getCashRegisterId(), sale.getCashSessionId(),
-                sale.getCashierId(), sale.getTotal(), sale.getPaidAt(), sale.getCreatedAt());
+    public static SaleSummaryView from(Sale sale, CustomerInfo customer) {
+        Objects.requireNonNull(customer, "the customer of the sale is required");
+        return new SaleSummaryView(sale.getId(), sale.getInternalNumber(), sale.getReceiptNumber(), sale.getStatus(),
+                sale.getBranchId(), sale.getCashRegisterId(), sale.getCashSessionId(), sale.getCashierId(),
+                sale.getCustomerId(), customer.displayName(), customer.documentType(), customer.documentNumber(),
+                sale.getOrderType(), sale.getTotal(), sale.getPaidAt(), sale.getCreatedAt());
     }
 }
