@@ -38,7 +38,7 @@ Al arrancar, la central crea sola el país Honduras, la empresa de ejemplo, las 
 - Usuario: `admin`.
 - **Contraseña en local: `Admin.Local.2026`.** Viene de `.env.example`, que Vagrant copia a `.env`. Solo es para pruebas locales.
 - En producción la contraseña inicial no está en ningún archivo: se toma de `POS_ADMIN_INITIAL_PASSWORD` o se genera en el primer arranque y se muestra una sola vez en el log de la central (`docker compose logs central-api`).
-- El sistema obliga a cambiarla en el primer ingreso: con `mustChangePassword` en `true`, los demás endpoints responden 403 hasta que se cambie con `POST /api/v1/me/password`. El cambio se hace en la central.
+- El sistema obliga a cambiarla en el primer ingreso: con `mustChangePassword` en `true`, los demás endpoints responden 403 hasta que se cambie con `POST /api/v1/me/password`. El cambio se puede hacer en la central o en cualquier tienda; ver la sección 6 para cómo viaja a la central.
 
 ### 4. Swagger
 
@@ -74,6 +74,8 @@ La colección no cubre todo. Los casos que faltan (por ejemplo, un MANAGER al qu
 ### 6. Sincronización y corte de internet
 
 Cada 30 segundos (y 15 segundos después del arranque), cada tienda pide a la central los cambios de datos maestros desde la última versión que aplicó. La primera vez carga una copia completa. La tienda siempre llama a la central; la central nunca la llama.
+
+Cada ciclo empieza subiendo a la central lo que la tienda tenía pendiente. Hoy eso son los cambios de contraseña hechos en la tienda (`POST /api/v1/me/password` funciona en la tienda): se aplican en la tienda al momento y se suben a la central, que conserva el cambio más reciente y lo replica a todas las tiendas. Si la central no responde, el ciclo se detiene antes de bajar cambios, para que una contraseña vieja no pise la nueva. El latido informa cuántos envíos quedan pendientes (`pendingUploadCount`), y el panel de tiendas (`GET /api/v1/store-nodes`) lo muestra.
 
 Prueba de corte (con el entorno levantado):
 

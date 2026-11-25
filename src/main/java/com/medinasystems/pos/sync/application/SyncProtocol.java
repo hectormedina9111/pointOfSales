@@ -4,9 +4,16 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
+
+import tools.jackson.databind.JsonNode;
 
 /**
  * Messages between a store and the central node. Rows travel as JSON text (one string per row, as PostgreSQL
@@ -54,5 +61,26 @@ public final class SyncProtocol {
      * its own branch from it, so a branch assigned in the central node reaches the store on the next heartbeat.
      */
     public record HeartbeatResponse(long latestVersion, Long branchId) {
+    }
+
+    /**
+     * One item of the store's outbox. {@code payload} is the JSON the store saved; its meaning depends on
+     * {@code eventType}, for example PASSWORD_CHANGED carries userId, passwordHash and changedAt.
+     */
+    public record UploadItem(@NotNull @Positive Long outboxId, @NotBlank @Size(max = 40) String eventType,
+                             @NotNull JsonNode payload) {
+    }
+
+    public record UploadRequest(@NotEmpty @Size(max = 100) List<@Valid UploadItem> items) {
+    }
+
+    /**
+     * What the central node decided for one item. {@code result} is ACCEPTED or REJECTED; {@code code} explains
+     * it (STALE, USER_NOT_FOUND...) and is null when there is nothing to add.
+     */
+    public record UploadResult(long outboxId, String result, String code) {
+    }
+
+    public record UploadResponse(List<UploadResult> results) {
     }
 }

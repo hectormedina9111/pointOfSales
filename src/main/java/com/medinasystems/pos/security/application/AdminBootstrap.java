@@ -1,6 +1,7 @@
 package com.medinasystems.pos.security.application;
 
 import java.security.SecureRandom;
+import java.time.Clock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,14 +34,16 @@ public class AdminBootstrap implements ApplicationRunner {
     private final RoleRepository roles;
     private final PasswordEncoder passwordEncoder;
     private final SecurityProperties properties;
+    private final Clock clock;
     private final SecureRandom random = new SecureRandom();
 
     public AdminBootstrap(AppUserRepository users, RoleRepository roles, PasswordEncoder passwordEncoder,
-                          SecurityProperties properties) {
+                          SecurityProperties properties, Clock clock) {
         this.users = users;
         this.roles = roles;
         this.passwordEncoder = passwordEncoder;
         this.properties = properties;
+        this.clock = clock;
     }
 
     @Override
@@ -53,7 +56,8 @@ public class AdminBootstrap implements ApplicationRunner {
         boolean generated = configured == null || configured.isBlank();
         String password = generated ? generatePassword() : configured;
 
-        AppUser admin = new AppUser(ADMIN_USERNAME, passwordEncoder.encode(password), "Administrador");
+        AppUser admin = new AppUser(ADMIN_USERNAME, passwordEncoder.encode(password), "Administrador",
+                clock.instant());
         admin.addRole(roles.findByCode("ADMIN")
                 .orElseThrow(() -> new IllegalStateException("Role ADMIN is missing; check migration V2")));
         users.save(admin);

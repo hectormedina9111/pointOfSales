@@ -53,6 +53,10 @@ public class AppUser extends AuditableEntity {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    /** When the password was last set, on any node. Decides which change wins when stores upload theirs. */
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
+
     @Column(nullable = false)
     private boolean active = true;
 
@@ -71,10 +75,11 @@ public class AppUser extends AuditableEntity {
     protected AppUser() {
     }
 
-    public AppUser(String username, String passwordHash, String fullName) {
+    public AppUser(String username, String passwordHash, String fullName, Instant passwordChangedAt) {
         this.username = username;
         this.passwordHash = passwordHash;
         this.fullName = fullName;
+        this.passwordChangedAt = passwordChangedAt;
     }
 
     /** Counts a wrong password; locks the account when the limit is reached. */
@@ -101,17 +106,36 @@ public class AppUser extends AuditableEntity {
     }
 
     /** Stores a new password hash; the user no longer has to change it. */
-    public void changePassword(String newPasswordHash) {
+    public void changePassword(String newPasswordHash, Instant changedAt) {
         this.passwordHash = newPasswordHash;
         this.mustChangePassword = false;
+        this.passwordChangedAt = changedAt;
     }
 
     /** An administrator sets a temporary password: the user must change it at the next sign-in. */
-    public void resetPassword(String newPasswordHash) {
+    public void resetPassword(String newPasswordHash, Instant changedAt) {
         this.passwordHash = newPasswordHash;
         this.mustChangePassword = true;
+        this.passwordChangedAt = changedAt;
         this.failedAttempts = 0;
         this.lockedUntil = null;
+    }
+
+    /**
+     * Applies a password changed on a store. Last write wins: a change not newer than the stored one is ignored.
+     *
+     * @return true when the password was replaced, false when the stored change is at least as recent
+     */
+    public boolean applyRemotePasswordChange(String newPasswordHash, Instant changedAt) {
+        if (passwordChangedAt != null && !changedAt.isAfter(passwordChangedAt)) {
+            return false;
+        }
+        this.passwordHash = newPasswordHash;
+        this.mustChangePassword = false;
+        this.passwordChangedAt = changedAt;
+        this.failedAttempts = 0;
+        this.lockedUntil = null;
+        return true;
     }
 
     /** Replaces the editable profile data and the roles. The username never changes. */
@@ -160,6 +184,10 @@ public class AppUser extends AuditableEntity {
 
     public boolean isMustChangePassword() {
         return mustChangePassword;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
     }
 
     public boolean isActive() {

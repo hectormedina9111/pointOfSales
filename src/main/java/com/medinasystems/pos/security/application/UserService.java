@@ -1,6 +1,7 @@
 package com.medinasystems.pos.security.application;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -66,7 +67,7 @@ public class UserService {
         String externalId = blankToNull(externalCode);
         checkUnique(mail, externalId, null);
 
-        AppUser user = new AppUser(username, passwordEncoder.encode(initialPassword), fullName);
+        AppUser user = new AppUser(username, passwordEncoder.encode(initialPassword), fullName, clock.instant());
         user.update(fullName, mail, externalId, true, rolesFor(roleCodes));
         return UserView.from(users.save(user));
     }
@@ -109,8 +110,9 @@ public class UserService {
     /** Sets a temporary password and signs the user out everywhere (refresh tokens are revoked). */
     public void resetPassword(Long id, String newPassword) {
         AppUser user = find(id);
-        user.resetPassword(passwordEncoder.encode(newPassword));
-        refreshTokens.revokeAllForUser(user, clock.instant());
+        Instant now = clock.instant();
+        user.resetPassword(passwordEncoder.encode(newPassword), now);
+        refreshTokens.revokeAllForUser(user, now);
     }
 
     private AppUser find(Long id) {

@@ -18,6 +18,8 @@ import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatRequest;
 import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatResponse;
 import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotPage;
 import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotVersion;
+import com.medinasystems.pos.sync.application.SyncProtocol.UploadRequest;
+import com.medinasystems.pos.sync.application.SyncProtocol.UploadResponse;
 
 /**
  * Store side only: calls the replication endpoints of the central node. The store always starts the call. The
@@ -86,6 +88,21 @@ public class CentralSyncClient {
                 .body(new AckRequest(version))
                 .retrieve()
                 .toBodilessEntity();
+    }
+
+    /**
+     * Sends outbox rows to the central node. Each answer says ACCEPTED or REJECTED for one row.
+     *
+     * @throws org.springframework.web.client.RestClientException when the central node cannot be reached or refuses
+     */
+    public UploadResponse upload(String token, UploadRequest request) {
+        return restClient.post()
+                .uri("/api/v1/sync/uploads")
+                .header(TOKEN_HEADER, token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(request)
+                .retrieve()
+                .body(UploadResponse.class);
     }
 
     public HeartbeatResponse heartbeat(String token, HeartbeatRequest request) {

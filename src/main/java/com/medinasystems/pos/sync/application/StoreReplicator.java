@@ -21,15 +21,18 @@ import com.medinasystems.pos.sync.domain.SyncTables;
 import com.medinasystems.pos.sync.infrastructure.CentralSyncClient;
 import com.medinasystems.pos.sync.infrastructure.ReplicaWriter;
 import com.medinasystems.pos.sync.infrastructure.StoreIdentityRepository;
+import com.medinasystems.pos.sync.infrastructure.SyncOutboxRepository;
 
 /**
  * Store side: the sync cycle. Every 30 seconds the store asks the central node for what changed and applies it.
  * The first time, it loads a full snapshot of the master data. Nothing here runs in a request, so the store keeps
  * answering reads when the central node is down.
  *
- * <p>Cycle: snapshot (only until it is complete), heartbeat, then changes page by page. Each page is applied in
- * one transaction together with the applied version, and then acknowledged to the central node. A failed cycle is
- * retried on the next one; applying a page twice is harmless because every write is an upsert or a replace.
+ * <p>Cycle: upload the pending outbox rows, heartbeat, snapshot (only until it is complete), then changes page by
+ * page. The upload comes first and must succeed: if it fails, the cycle stops, so a replicated password can never
+ * overwrite a newer local one that has not reached the central node yet. Each page is applied in one transaction
+ * together with the applied version, and then acknowledged to the central node. A failed cycle is retried on the
+ * next one; applying a page twice is harmless because every write is an upsert or a replace.
  */
 @Service
 @Profile("store")
@@ -46,15 +49,20 @@ public class StoreReplicator {
     private final StoreSyncState state;
     private final ObjectProvider<BuildProperties> buildProperties;
     private final Clock clock;
+    private final StoreOutboxUploader uploader;
+    private final SyncOutboxRepository outbox;
 
     public StoreReplicator(StoreIdentityRepository identities, CentralSyncClient client, ReplicaWriter writer,
-                           StoreSyncState state, ObjectProvider<BuildProperties> buildProperties, Clock clock) {
+                           StoreSyncState state, ObjectProvider<BuildProperties> buildProperties, Clock clock,
+                           StoreOutboxUploader uploader, SyncOutboxRepository outbox) {
         this.identities = identities;
         this.client = client;
         this.writer = writer;
         this.state = state;
         this.buildProperties = buildProperties;
         this.clock = clock;
+        this.uploader = uploader;
+        this.outbox = outbox;
     }
 
     /** One sync cycle. Errors are recorded in the identity row and logged without the token; the next cycle retries. */
@@ -66,10 +74,12 @@ public class StoreReplicator {
         }
         String token = identity.get().getStoreToken();
         try {
+            // Upload first: if it fails, nothing is pulled in this cycle (see the class comment).
+            uploader.uploadPending(token);
+            heartbeat(token);
             if (identity.get().getSnapshotCompletedAt() == null) {
                 loadSnapshot(token);
             }
-            heartbeat(token);
             pullChanges(token);
             state.recordSuccess(clock.instant());
         } catch (SnapshotRequiredException ex) {
@@ -104,7 +114,8 @@ public class StoreReplicator {
 
     private void heartbeat(String token) {
         HeartbeatResponse response = client.heartbeat(token,
-                new HeartbeatRequest(appliedVersion(), appVersion(), 0, null));
+                new HeartbeatRequest(appliedVersion(), appVersion(), outbox.pendingCount(),
+                        outbox.oldestPendingAt().orElse(null)));
         if (state.updateBranch(response.branchId())) {
             log.info("Store branch changed to {}", response.branchId());
         }
