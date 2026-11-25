@@ -1245,7 +1245,7 @@ Carpetas de la colección Hoppscotch: 1 Sistema, 2 Sesión, 3 Usuarios, 4 Organi
 
 ## MVP del frontend (Angular)
 
-El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `main` el 24 de noviembre de 2026. Para poder crear registros y ver cómo se replican a las tiendas, el siguiente MVP es el frontend. Las pruebas automatizadas del backend (etapa 2) quedan para después del frontend.
+El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `main` el 24 de noviembre de 2026. El MVP del frontend (Angular, pasos 1 a 7) quedó terminado el 24 de noviembre de 2026. Las pruebas automatizadas del backend (etapa 2) quedan para más adelante.
 
 ### Decisiones
 
@@ -1276,23 +1276,25 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 
 ### Orden de trabajo del frontend
 
-1. **Base:** proyecto Angular 22 con Bootstrap y ng-bootstrap, cliente de la API generado, traducciones, Docker con nginx y CI.
-2. **Sesión y menú:** login, cambio de contraseña, token y menú por privilegios.
-3. **Administración:** usuarios, roles, privilegios y sucursales por usuario.
-4. **Organización y catálogo:** países, empresa, sucursales, categorías, unidades, impuestos y productos.
-5. **Precios:** listas, escalas y consultor de precio.
-6. **Tiendas y réplica:** panel de tiendas, estado en la tienda y bitácora.
-7. **Cierre:** integración con Vagrant, README y revisión de criterios.
+1. **Base:** proyecto Angular 22 con Bootstrap y ng-bootstrap, cliente de la API generado, traducciones, Docker con nginx y CI. (hecho)
+2. **Sesión y menú:** login, cambio de contraseña, token y menú por privilegios. (hecho)
+3. **Administración:** usuarios, roles, privilegios y sucursales por usuario. (hecho)
+4. **Organización y catálogo:** países, empresa, sucursales, categorías, unidades, impuestos y productos. (hecho)
+5. **Precios:** listas, escalas y consultor de precio. (hecho)
+6. **Tiendas y réplica:** panel de tiendas, estado en la tienda y bitácora. (hecho)
+7. **Cierre:** integración con Vagrant, README y revisión de criterios. (hecho)
 
 ### Criterios de aceptación del frontend
 
-- [ ] `vagrant up` levanta también la web y se abre en el navegador.
-- [ ] El administrador inicia sesión, cambia la contraseña y ve solo los menús que le corresponden; un usuario sin un privilegio no ve el botón de esa acción.
-- [ ] Se crean país, empresa, sucursal, categorías, impuesto, unidad y producto desde la web, y los errores del backend se muestran en el idioma elegido.
-- [ ] Un producto creado en la web de la central aparece en la web de la tienda 1 (http://192.168.56.11) en menos de un minuto.
-- [ ] El panel muestra la tienda 2 desconectada durante un corte de internet y al día cuando vuelve.
-- [ ] El consultor de precio muestra L 100.00 de base y L 15.00 de ISV para un producto de L 115.00 con ISV 15 %.
-- [ ] Las pantallas funcionan en español y en inglés, y en una tablet.
+- [x] `vagrant up` levanta también la web y se abre en el navegador.
+- [x] El administrador inicia sesión, cambia la contraseña y ve solo los menús que le corresponden; un usuario sin un privilegio no ve el botón de esa acción.
+- [x] Se crean país, empresa, sucursal, categorías, impuesto, unidad y producto desde la web, y los errores del backend se muestran en el idioma elegido.
+- [x] Un producto creado en la web de la central aparece en la web de la tienda 1 (http://192.168.56.11) en menos de un minuto.
+- [x] El panel muestra la tienda 2 desconectada durante un corte de internet y al día cuando vuelve.
+- [x] El consultor de precio muestra L 100.00 de base y L 15.00 de ISV para un producto de L 115.00 con ISV 15 %.
+- [x] Las pantallas funcionan en español y en inglés, y en una tablet.
+
+Verificados manualmente por el responsable el 24 de noviembre de 2026 en el entorno local (Vagrant con central y dos tiendas). Las pruebas automatizadas quedan para la segunda etapa.
 
 ## Decisiones y preguntas abiertas
 
@@ -1641,3 +1643,7 @@ Alcance: datos iniciales, fecha de negocio, orden de confirmación y purga del r
 - Un rechazo deja la contraseña de la tienda distinta de la de la central, hasta el siguiente cambio de ese usuario en la central. No se revierte la tienda: es raro (el usuario inició sesión en esa tienda, así que está asignado a su sucursal) y pide decidir la política de reconciliación.
 - Las fechas de la tienda y de la central se comparan tal cual. Un reloj de tienda adelantado puede ganar a un cambio posterior hecha en la central. Con NTP en ambos nodos la diferencia es de segundos.
 - Esta cola es la base de las subidas futuras (por ejemplo, las ventas): mismo `sync_outbox`, mismo endpoint `/sync/uploads` con un `eventType` nuevo, y el mismo recibo para no duplicar.
+
+### Decisión: eventos asíncronos
+
+Decisión del 24 de noviembre de 2026: hoy todos los listeners son síncronos y corren en la misma transacción (auditoría y cola de envíos de la tienda), por eso no se usa el registro de eventos de Spring Modulith. Cuando se agregue el primer listener asíncrono o posterior al commit, se activa antes `spring-modulith-starter-jpa` con su tabla `event_publication` (migración Flyway), para que ningún evento se pierda si el servidor se cae, y se reintenten al arrancar.

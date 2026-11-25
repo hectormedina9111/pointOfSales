@@ -26,6 +26,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - **Un módulo nunca accede a las tablas ni a las clases internas de otro.** Usa su servicio público o escucha sus eventos.
 - La prueba de Spring Modulith debe pasar siempre; si falla, se corrige el diseño, no la prueba.
 - Las reglas de negocio viven en `domain`, no en controladores ni repositorios.
+- Eventos entre módulos: los listeners síncronos (`@EventListener`) corren en la misma transacción. Si se agrega un listener asíncrono o después del commit (`@ApplicationModuleListener`, `@TransactionalEventListener`, `@Async`), es obligatorio activar antes el registro de eventos de Spring Modulith (`spring-modulith-starter-jpa`, tabla `event_publication` creada con Flyway) para no perder eventos.
 
 ## Central y tienda
 
@@ -82,7 +83,8 @@ Reglas para la segunda etapa:
 ## Forma de trabajo
 
 - MVP del backend ("MVP: base y catálogos" en `docs/plan.md`): terminado el 24 de noviembre de 2026.
-- Alcance actual: **MVP del frontend** (ver "MVP del frontend (Angular)" en `docs/plan.md`), en el repositorio aparte `pointOfSales-frontend`. En este repositorio solo se hacen los cambios del backend que el frontend necesite. No implementar módulos fuera del MVP sin que se pida.
+- MVP del frontend: terminado el 24 de noviembre de 2026.
+- Alcance actual: por definir con el responsable (etapa 2 de pruebas, despliegue en Oracle Cloud o módulo de ventas). No implementar módulos nuevos sin que se pida.
 - Seguir el orden de trabajo del MVP y verificar contra sus criterios de aceptación.
 - Cambios pequeños y enfocados; un commit por paso lógico, con mensaje en inglés en modo imperativo (`Add product search by barcode`).
 - Si una decisión no está en el plan o lo contradice, preguntar antes de implementarla y, una vez decidida, actualizar `docs/plan.md`.
