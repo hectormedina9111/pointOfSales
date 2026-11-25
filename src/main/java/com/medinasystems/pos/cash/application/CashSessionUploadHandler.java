@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import com.medinasystems.pos.sync.StoreIdRanges;
 import com.medinasystems.pos.sync.UploadHandler;
 import com.medinasystems.pos.sync.UploadOutcome;
 import com.medinasystems.pos.sync.UploadPayload;
@@ -50,10 +51,12 @@ public class CashSessionUploadHandler implements UploadHandler {
 
     private final JdbcTemplate jdbc;
     private final JsonMapper jsonMapper;
+    private final StoreIdRanges ranges;
 
-    public CashSessionUploadHandler(JdbcTemplate jdbc, JsonMapper jsonMapper) {
+    public CashSessionUploadHandler(JdbcTemplate jdbc, JsonMapper jsonMapper, StoreIdRanges ranges) {
         this.jdbc = jdbc;
         this.jsonMapper = jsonMapper;
+        this.ranges = ranges;
     }
 
     @Override
@@ -64,13 +67,13 @@ public class CashSessionUploadHandler implements UploadHandler {
     @Override
     public UploadOutcome apply(long storeNodeId, Long storeBranchId, JsonNode payload) {
         try {
-            return store(payload, storeBranchId);
+            return store(storeNodeId, payload, storeBranchId);
         } catch (InvalidPayloadException ex) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
     }
 
-    private UploadOutcome store(JsonNode payload, Long storeBranchId) {
+    private UploadOutcome store(long storeNodeId, JsonNode payload, Long storeBranchId) {
         long id = UploadPayload.longField(payload, "id");
         long branchId = UploadPayload.longField(payload, "branchId");
         if (storeBranchId == null || !storeBranchId.equals(branchId)) {
@@ -81,6 +84,9 @@ public class CashSessionUploadHandler implements UploadHandler {
         String status = UploadPayload.text(payload, "status");
         if (!OPEN.equals(status) && !CLOSED.equals(status)) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
+        }
+        if (!idsInRange(storeNodeId, id, UploadPayload.array(payload, "movements"))) {
+            return UploadOutcome.rejected("ID_OUT_OF_RANGE");
         }
         Instant openedAt = UploadPayload.instant(payload, "openedAt");
         BigDecimal openingAmount = UploadPayload.decimal(payload, "openingAmount");
@@ -104,6 +110,19 @@ public class CashSessionUploadHandler implements UploadHandler {
             jdbc.update(MOVEMENT_SQL, movement);
         }
         return UploadOutcome.accepted();
+    }
+
+    /** The session and each of its movements were created by the store, so their ids lie in the store's range. */
+    private boolean idsInRange(long storeNodeId, long sessionId, JsonNode movements) {
+        if (!ranges.contains(storeNodeId, sessionId)) {
+            return false;
+        }
+        for (JsonNode movement : movements) {
+            if (!ranges.contains(storeNodeId, UploadPayload.longField(movement, "id"))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Reads every movement before anything is written. A movement of an unknown type is invalid. */

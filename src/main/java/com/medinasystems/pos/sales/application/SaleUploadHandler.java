@@ -24,6 +24,7 @@ import org.springframework.stereotype.Component;
 
 import com.medinasystems.pos.cash.CashSessionDirectory;
 import com.medinasystems.pos.customer.CustomerDirectory;
+import com.medinasystems.pos.sync.StoreIdRanges;
 import com.medinasystems.pos.sync.UploadHandler;
 import com.medinasystems.pos.sync.UploadOutcome;
 import com.medinasystems.pos.sync.UploadPayload.InvalidPayloadException;
@@ -60,13 +61,15 @@ public class SaleUploadHandler implements UploadHandler {
     private final JdbcTemplate jdbc;
     private final CashSessionDirectory sessions;
     private final CustomerDirectory customers;
+    private final StoreIdRanges ranges;
     private final Clock clock;
 
     public SaleUploadHandler(JdbcTemplate jdbc, CashSessionDirectory sessions, CustomerDirectory customers,
-                             Clock clock) {
+                             StoreIdRanges ranges, Clock clock) {
         this.jdbc = jdbc;
         this.sessions = sessions;
         this.customers = customers;
+        this.ranges = ranges;
         this.clock = clock;
     }
 
@@ -78,13 +81,13 @@ public class SaleUploadHandler implements UploadHandler {
     @Override
     public UploadOutcome apply(long storeNodeId, Long storeBranchId, JsonNode payload) {
         try {
-            return store(payload, storeBranchId);
+            return store(storeNodeId, payload, storeBranchId);
         } catch (InvalidPayloadException ex) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
         }
     }
 
-    private UploadOutcome store(JsonNode payload, Long storeBranchId) {
+    private UploadOutcome store(long storeNodeId, JsonNode payload, Long storeBranchId) {
         long id = longField(payload, "id");
         long branchId = longField(payload, "branchId");
         if (storeBranchId == null || !storeBranchId.equals(branchId)) {
@@ -92,6 +95,9 @@ public class SaleUploadHandler implements UploadHandler {
         }
         if (!PAID.equals(text(payload, "status"))) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
+        }
+        if (!idsInRange(storeNodeId, payload)) {
+            return UploadOutcome.rejected("ID_OUT_OF_RANGE");
         }
         long cashSessionId = longField(payload, "cashSessionId");
         long customerId = longField(payload, "customerId");
@@ -124,6 +130,28 @@ public class SaleUploadHandler implements UploadHandler {
             jdbc.update(paymentSql, payment);
         }
         return UploadOutcome.accepted();
+    }
+
+    /**
+     * Every id the store created for this sale lies in the store's range: the sale, its internal number, its lines and its
+     * payments. Checked before anything is written.
+     */
+    private boolean idsInRange(long storeNodeId, JsonNode payload) {
+        if (!ranges.contains(storeNodeId, longField(payload, "id"))
+                || !ranges.contains(storeNodeId, longField(payload, "internalNumber"))) {
+            return false;
+        }
+        for (JsonNode line : array(payload, "lines")) {
+            if (!ranges.contains(storeNodeId, longField(line, "id"))) {
+                return false;
+            }
+        }
+        for (JsonNode payment : array(payload, "payments")) {
+            if (!ranges.contains(storeNodeId, longField(payment, "id"))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The 36 values of SALE_COLUMNS, in that order. synced_at is the moment the central node received the sale. */

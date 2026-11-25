@@ -12,6 +12,7 @@ import com.medinasystems.pos.customer.domain.CustomerType;
 import com.medinasystems.pos.customer.domain.DocumentType;
 import com.medinasystems.pos.pricing.PriceListDirectory;
 import com.medinasystems.pos.shared.BusinessRuleException;
+import com.medinasystems.pos.sync.StoreIdRanges;
 import com.medinasystems.pos.sync.UploadHandler;
 import com.medinasystems.pos.sync.UploadOutcome;
 import com.medinasystems.pos.sync.UploadPayload;
@@ -40,10 +41,12 @@ public class CustomerUploadHandler implements UploadHandler {
 
     private final JdbcTemplate jdbc;
     private final PriceListDirectory priceLists;
+    private final StoreIdRanges ranges;
 
-    public CustomerUploadHandler(JdbcTemplate jdbc, PriceListDirectory priceLists) {
+    public CustomerUploadHandler(JdbcTemplate jdbc, PriceListDirectory priceLists, StoreIdRanges ranges) {
         this.jdbc = jdbc;
         this.priceLists = priceLists;
+        this.ranges = ranges;
     }
 
     @Override
@@ -58,6 +61,9 @@ public class CustomerUploadHandler implements UploadHandler {
             upload = Upload.from(payload);
         } catch (InvalidPayloadException | BusinessRuleException ex) {
             return UploadOutcome.rejected("INVALID_PAYLOAD");
+        }
+        if (!ranges.contains(storeNodeId, upload.id())) {
+            return UploadOutcome.rejected("ID_OUT_OF_RANGE");
         }
         // The store sends an item again when it has not seen the answer: a customer that is already here is applied.
         if (exists(ID_EXISTS_SQL, upload.id())) {
