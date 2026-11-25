@@ -73,7 +73,7 @@ Son 50 requerimientos en 15 módulos; la prioridad indica si entran en el MVP (A
 | RF-18 | Ventas | Aplicar descuentos por línea o a la venta completa (monto o porcentaje) | Alta |
 | RF-19 | Ventas | Cobrar con uno o varios métodos de pago y calcular el vuelto | Alta |
 | RF-20 | Ventas | Poner una venta en espera y retomarla | Media |
-| RF-21 | Ventas | Anular una venta pagada, con motivo y autorización | Alta |
+| RF-21 | Ventas | ~~Anular una venta pagada~~. Decisión del 25 de noviembre de 2026: una venta pagada no se anula nunca; se corrige con una devolución (nota de crédito) | — |
 | RF-22 | Ventas | Registrar devoluciones parciales o totales como documentos RETURN con los mismos campos que la venta, y emitir nota de crédito | Media |
 | RF-23 | Ventas | Impedir vender más de lo disponible, salvo que la sucursal lo permita | Media |
 | RF-24 | Clientes | Registrar clientes con nombre, RTN, teléfono y correo; usar "Consumidor final" por defecto | Alta |
@@ -1413,6 +1413,65 @@ Pendientes menores conocidos:
 - El ticket muestra la etiqueta fija "RTN"; debe tomar `tax_id_label` del país.
 - La consulta de una venta o sesión por id no se limita todavía al cajero que la hizo (los listados sí).
 - El cierre de caja no valida los códigos de método de pago contados.
+
+## MVP 3B: devoluciones y notas de crédito
+
+Decidido el 25 de noviembre de 2026, al terminar el 3A. La facturación fiscal (3C) sigue después; en el 3B los documentos son internos, sin CAI.
+
+### Decisiones del responsable
+
+| Tema | Decisión |
+| --- | --- |
+| Anulación | **No existe.** Una venta pagada nunca se anula ni se borra: se corrige con una devolución. RF-21 queda reemplazado. |
+| Devolución | Parcial o total, por líneas y cantidades. Es una fila de `sale` con `type = RETURN` que apunta a la venta original (modelo de datos de `sale`). |
+| Plazo y autorización | Sin plazo. Siempre con motivo y autorización del jefe de tienda: privilegio `ACTION_SALE_RETURN` o su usuario y contraseña. |
+| Reembolso el mismo día | Si la devolución se hace el mismo día calendario de la venta (zona horaria de la tienda): efectivo de la caja abierta o el mismo método de pago de la venta. |
+| Reembolso en días posteriores | Solo con **nota de crédito**: un documento con saldo que se usa como medio de pago en otra compra. |
+| Nota de crédito | A nombre del cliente de la venta; si es Consumidor final, al portador con su número impreso. No vence. Saldo parcial: se puede usar en una o varias compras hasta agotar el saldo. |
+| Uso de la nota de crédito | En cualquier tienda, con conexión: el saldo vive en la central y la tienda lo valida y descuenta en la central al cobrar. Sin conexión no se puede usar; así nunca se gasta dos veces. |
+| Devolver en otra tienda | Se configura en la central **por sucursal** (`branch.accepts_foreign_returns`). Si está permitido, la tienda busca la venta en la central (requiere conexión) y la central aparta las cantidades devueltas. Las ventas propias se devuelven también sin conexión. |
+
+### Cómo funciona
+
+- **Cantidades devueltas:** cada línea de la venta original lleva la cantidad ya devuelta. No se puede devolver más de lo vendido. La venta original pasa a `PARTIALLY_RETURNED` o `RETURNED`.
+- **Montos:** el reembolso de cada línea usa el precio cobrado en la venta original, con su descuento de línea y su parte del descuento a la venta, para que devolver todo dé exactamente el total cobrado. Base e ISV se calculan igual que en la venta.
+- **Caja:** la devolución se registra en la sesión de caja abierta de quien la hace. El efectivo reembolsado baja el efectivo esperado del arqueo; el reembolso por el método original aparece en su método con signo negativo; la nota de crédito no mueve caja.
+- **Reserva en la central:** al devolver una venta de otra tienda, y también una propia cuando hay conexión, la tienda pide a la central que aparte las cantidades (`sale_return_claim`). La central responde con lo que queda por devolver y rechaza si ya no alcanza. Las reservas se replican a todas las tiendas, para que la tienda de origen sepa lo que se devolvió en otra.
+- **Sin conexión:** una tienda puede devolver ventas propias con sus datos locales; la reserva sube después. Si la central detecta que dos tiendas devolvieron la misma cantidad (una de ellas sin conexión), acepta el documento, porque no revalida, y lo marca como conflicto en el panel de tiendas para revisión.
+- **Venta de otra tienda:** la devolución guarda el id y el número de la venta original sin llave foránea, porque esa venta no existe en la base de la tienda que devuelve.
+- **Nota de crédito:** tabla `credit_note` (número, cliente, devolución de origen, sucursal, monto, saldo, estado). Se crea en la tienda con un id de su rango y sube a la central, donde vive el saldo; mientras no haya subido, aún no se puede usar. Al cobrar con el método `CREDIT_NOTE`, la tienda pide a la central descontar el monto con la clave de idempotencia del cobro; si el cobro falla después, la tienda libera ese monto.
+- **Documentos:** la devolución y la nota de crédito suben a la central por `sync_outbox` como las ventas; la central verifica que lleguen completas, sin duplicados y con ids del rango de la tienda.
+- **3C:** cuando llegue la facturación fiscal, la devolución de una factura emitirá la nota de crédito fiscal con su CAI. La nota de crédito de saldo del 3B sigue siendo un documento interno.
+
+### Pantallas
+
+- **Detalle de la orden:** botón **Devolver** en ventas pagadas, con devolución parcial o total.
+- **Devolución por pasos:** líneas y cantidades → motivo y forma de reembolso (según el día) → autorización del jefe si hace falta → resumen y confirmar → comprobante de devolución, y de la nota de crédito si se emitió.
+- **Devolver venta de otra tienda:** búsqueda por número de recibo en la central, si la sucursal lo permite.
+- **Cobro:** método Nota de crédito: se escribe el número, se muestra el saldo disponible y se aplica hasta el pendiente.
+- **Notas de crédito:** listado con filtros y paginación en el servidor (número, cliente, estado, fechas, sucursal) y detalle como página, con sus usos.
+- **Órdenes:** filtro por tipo de documento (venta o devolución) y estados `PARTIALLY_RETURNED` y `RETURNED`.
+- **Sucursales (central):** marca "Acepta devoluciones de otras sucursales".
+
+### Orden de trabajo del 3B
+
+1. **Backend: devoluciones en la tienda** (tipo RETURN, cantidades devueltas, montos, reembolso en efectivo o método original, autorización, caja y arqueo).
+2. **Backend: notas de crédito** (emisión, subida, saldo en la central, cobro con `CREDIT_NOTE`, liberación).
+3. **Backend: reservas en la central y devolución en otra tienda** (configuración por sucursal, búsqueda, reserva, réplica, conflictos).
+4. **Frontend: devolución por pasos** desde el detalle de la orden y comprobantes.
+5. **Frontend: nota de crédito en el cobro, listado y detalle de notas, devolución de otra tienda y marca en sucursales.**
+6. **Cierre:** README, plan y revisión de criterios.
+
+### Criterios de aceptación del 3B
+
+- [ ] Una venta pagada no tiene opción de anular; se devuelve.
+- [ ] El mismo día, una devolución parcial reembolsa en efectivo y el arqueo baja el efectivo esperado; otra reembolsa con el método original.
+- [ ] Un día después, el reembolso solo permite nota de crédito.
+- [ ] Sin el privilegio, la devolución pide usuario y contraseña del jefe de tienda y exige motivo.
+- [ ] No se puede devolver más de lo vendido; la venta queda `PARTIALLY_RETURNED` y luego `RETURNED`.
+- [ ] Una nota de crédito de L 500 paga L 200 en una compra en otra tienda y queda con L 300 de saldo; sin conexión no se puede usar.
+- [ ] Con la sucursal habilitada, la tienda 2 devuelve una venta de la tienda 1 buscándola en la central; deshabilitada, lo rechaza.
+- [ ] Devoluciones y notas de crédito suben a la central y aparecen en sus listados.
 
 ## Decisiones y preguntas abiertas
 
