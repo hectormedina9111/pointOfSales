@@ -176,6 +176,18 @@
       "initialValue": "",
       "currentValue": "",
       "secret": true
+    },
+    {
+      "key": "saleId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
+    },
+    {
+      "key": "holdId",
+      "initialValue": "",
+      "currentValue": "",
+      "secret": false
     }
   ]
 }

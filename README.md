@@ -53,7 +53,7 @@ Identidad de cada nodo: `GET /api/v1/system/info` (cambiar la IP).
 
 ### 5. Colección Hoppscotch
 
-La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hoppscotch.json` (94 peticiones en 10 carpetas) y dos entornos, `pos-local.hoppscotch-env.json` (central) y `pos-store1.hoppscotch-env.json` (tienda 1). Importarla y recorrer las carpetas en orden, de la 1 a la 10.
+La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hoppscotch.json` (108 peticiones en 10 carpetas) y dos entornos, `pos-local.hoppscotch-env.json` (central) y `pos-store1.hoppscotch-env.json` (tienda 1). Importarla y recorrer las carpetas en orden, de la 1 a la 10.
 
 | Carpeta | Qué prueba |
 |---|---|
@@ -65,7 +65,7 @@ La colección de pruebas está en [docs/api](docs/api/README.md): `pos-api.hopps
 | 6. Precios | Listas de mayoreo y VIP, escalas por cantidad, vigencias, precio por sucursal y precio de hoy. |
 | 7. Tiendas | Panel de tiendas (central); estado de sincronización y login en la tienda 1 (tienda). |
 | 8. Auditoría | Bitácora de cambios, por entidad y por fechas. |
-| 9. Caja y ventas | Altas y listado de cajas por sucursal, listado de métodos de pago y, en la tienda, sesiones de caja (apertura, movimientos, resumen y cierre). |
+| 9. Caja y ventas | Altas y listado de cajas por sucursal, listado de métodos de pago y, en la tienda, sesiones de caja (apertura, movimientos, resumen y cierre), cotización, esperas, cobros con vuelto y mixto, idempotencia y ticket. |
 | 10. Errores de ejemplo | Respuestas de error esperadas (401, 422). Deben fallar a propósito. |
 
 Antes de empezar, pon la contraseña de `admin` en el entorno (`adminPassword`) y ejecuta **2. Sesión → Login**. Después, **2. Sesión → Cambiar contraseña** y actualiza `adminPassword` con la nueva. El token de acceso dura 15 minutos; si una petición responde 401, ejecuta **Refrescar token**.
@@ -173,6 +173,18 @@ Solo la tienda abre, mueve y cierra sesiones de caja; la central responde 403 co
 - Resumen: `GET /api/v1/cash-sessions/{id}/summary` con lo esperado por método de pago. En efectivo es el fondo, más depósitos, menos retiros y más lo cobrado en efectivo neto de vuelto (la parte de cobros llega con el módulo de ventas).
 - Cierre: `POST /api/v1/cash-sessions/{id}/close` con `counts` (`paymentMethodCode` y `amount` por método) y `notes`. Devuelve la sesión cerrada con esperado, contado y diferencia por método.
 - Pruebas: carpeta 9 de Hoppscotch, con la tienda 1. El retiro con autorización necesita un cajero sin `ACTION_CASH_WITHDRAWAL` (el administrador lo tiene); el usuario y la contraseña del jefe van en `managerUsername` y `managerPassword`.
+
+### Ventas (tienda)
+
+Solo la tienda cotiza, pone en espera y cobra; la central responde 403 con `code: STORE_ONLY_OPERATION`. Detalle en `docs/plan.md`, "Decisiones de implementación: 3A paso 3".
+
+- Cotizar: `POST /api/v1/sales/quote` con `lines` (`productId`, `quantity`, y `discountType` y `discountValue` opcionales por línea) y el descuento de la venta. Devuelve líneas y totales calculados en el servidor, sin guardar nada. Los precios son los de la sucursal de la tienda. `discountAuthorizationRequired` indica si el descuento necesita al jefe.
+- Esperas: `POST /api/v1/sales/holds` guarda la venta sin cobrar en la caja de la sesión abierta (`NO_OPEN_SESSION` si no hay una). `GET /api/v1/sales/holds` lista las esperas de la caja, `GET /api/v1/sales/holds/{id}` muestra una y `DELETE /api/v1/sales/holds/{id}` la borra de verdad (no es un documento: no se cobró nada).
+- Cobrar: `POST /api/v1/sales` con `lines`, `payments` (`paymentMethodCode`, `amount`, y en efectivo `amountReceived`; en tarjeta o transferencia, `reference`, y en tarjeta `cardLast4`), `idempotencyKey` (obligatoria) y, si hace falta, `authorization` (`username` y `password` de un jefe). Con `holdId` cobra una venta en espera. El servidor recalcula todo; los pagos deben sumar el total exacto. Devuelve 201 con la venta, o 200 con la que creó esa misma clave: repetir un cobro nunca crea otra venta.
+- Descuentos: más de `pos.sales.max-discount-percent` (10 % por defecto, variable `POS_SALES_MAX_DISCOUNT_PERCENT`) en una línea o en la venta necesita `ACTION_SALE_DISCOUNT_OVERRIDE` o la autorización de un jefe (`DISCOUNT_AUTHORIZATION_REQUIRED`).
+- Consultar: `GET /api/v1/sales/{id}` (con líneas y pagos), `GET /api/v1/sales` con `status`, `cashSessionId`, `cashierId`, `from` y `to`, del más reciente al más antiguo. Solo el jefe de tienda tiene el listado (`GET_SALES`); el cajero consulta por id.
+- Ticket: `GET /api/v1/sales/{id}/ticket` con los datos de impresión de 80 mm: empresa (razón social, nombre comercial, RTN), sucursal, caja, recibo, fecha y hora en la zona de la empresa, cajero, líneas, totales con exento, gravado 15 % y 18 %, ISV, pagos y vuelto. Solo para ventas cobradas.
+- Pruebas: carpeta 9 de Hoppscotch. Los cobros de ejemplo suponen un producto de precio L 115.00; ajuste `productId` o los montos al precio real.
 
 ### Tiendas y activación
 
