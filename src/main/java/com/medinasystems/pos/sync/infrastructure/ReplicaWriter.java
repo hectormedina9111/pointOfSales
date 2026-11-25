@@ -2,6 +2,7 @@ package com.medinasystems.pos.sync.infrastructure;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -31,6 +32,13 @@ import com.medinasystems.pos.sync.domain.SyncTables;
 public class ReplicaWriter {
 
     private static final Pattern SAFE_NAME = Pattern.compile("^[a-z_][a-z0-9_]*$");
+    private static final String APP_USER = "app_user";
+    /** Password columns of app_user: a replicated row never overwrites a newer local password. */
+    private static final Set<String> PASSWORD_COLUMNS = Set.of("password_hash", "must_change_password",
+            "password_changed_at");
+    private static final String NOT_OLDER_PASSWORD = "EXCLUDED.password_changed_at IS NULL"
+            + " OR app_user.password_changed_at IS NULL"
+            + " OR EXCLUDED.password_changed_at >= app_user.password_changed_at";
     private static final String COLUMNS_OF_TABLE = """
             SELECT column_name FROM information_schema.columns
             WHERE table_schema = current_schema() AND table_name = ?
@@ -116,16 +124,26 @@ public class ReplicaWriter {
         jdbc.update("DELETE FROM " + safe(table.name()) + " WHERE id = ?", change.entityId());
     }
 
-    /** Insert, or update every column but id when the id already exists. */
+    /**
+     * Insert, or update every column but id when the id already exists. In app_user the password columns keep the
+     * local value when the incoming password is older (see NOT_OLDER_PASSWORD); the rest of the row always updates.
+     */
     private void upsert(String table, String json) {
         String name = safe(table);
         String set = columnsOf(name).stream()
                 .filter(column -> !"id".equals(column))
-                .map(column -> column + " = EXCLUDED." + column)
+                .map(column -> column + " = " + assignment(name, column))
                 .reduce((left, right) -> left + ", " + right)
                 .orElseThrow(() -> new IllegalStateException("Table has no columns to update: " + name));
         jdbc.update("INSERT INTO " + name + " SELECT r.* FROM json_populate_recordset(NULL::" + name
                 + ", ?::json) AS r ON CONFLICT (id) DO UPDATE SET " + set, json);
+    }
+
+    private static String assignment(String table, String column) {
+        if (!APP_USER.equals(table) || !PASSWORD_COLUMNS.contains(column)) {
+            return "EXCLUDED." + column;
+        }
+        return "CASE WHEN " + NOT_OLDER_PASSWORD + " THEN EXCLUDED." + column + " ELSE app_user." + column + " END";
     }
 
     private void insert(String table, String json) {

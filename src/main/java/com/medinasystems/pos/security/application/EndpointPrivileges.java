@@ -20,7 +20,7 @@ public final class EndpointPrivileges {
      */
     private static final List<String> EXEMPT = List.of("/api/v1/auth", "/api/v1/system", "/api/v1/me",
             "/api/v1/sync/activate", "/api/v1/sync/ping", "/api/v1/sync/snapshot", "/api/v1/sync/changes",
-            "/api/v1/sync/ack", "/api/v1/sync/heartbeat");
+            "/api/v1/sync/ack", "/api/v1/sync/heartbeat", "/api/v1/sync/uploads");
 
     private EndpointPrivileges() {
     }

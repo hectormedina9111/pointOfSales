@@ -14,12 +14,15 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.medinasystems.pos.sync.application.CentralSyncService;
+import com.medinasystems.pos.sync.application.CentralUploadService;
 import com.medinasystems.pos.sync.application.SyncProtocol.AckRequest;
 import com.medinasystems.pos.sync.application.SyncProtocol.ChangesPage;
 import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatRequest;
 import com.medinasystems.pos.sync.application.SyncProtocol.HeartbeatResponse;
 import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotPage;
 import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotVersion;
+import com.medinasystems.pos.sync.application.SyncProtocol.UploadRequest;
+import com.medinasystems.pos.sync.application.SyncProtocol.UploadResponse;
 
 /**
  * Replication endpoints that stores call on the central node. Every route needs the store token (the filter in
@@ -32,9 +35,11 @@ import com.medinasystems.pos.sync.application.SyncProtocol.SnapshotVersion;
 public class SyncReplicationController {
 
     private final CentralSyncService sync;
+    private final CentralUploadService uploadService;
 
-    public SyncReplicationController(CentralSyncService sync) {
+    public SyncReplicationController(CentralSyncService sync, CentralUploadService uploadService) {
         this.sync = sync;
+        this.uploadService = uploadService;
     }
 
     @GetMapping("/snapshot/version")
@@ -59,6 +64,13 @@ public class SyncReplicationController {
     public void ack(@RequestAttribute(StoreTokenAuthenticationFilter.STORE_NODE_ATTRIBUTE) long storeNodeId,
                     @Valid @RequestBody AckRequest request) {
         sync.acknowledge(storeNodeId, request.version());
+    }
+
+    /** Outbox rows sent by a store (for example, password changes made there). Answers one result per item. */
+    @PostMapping("/uploads")
+    public UploadResponse uploads(@RequestAttribute(StoreTokenAuthenticationFilter.STORE_NODE_ATTRIBUTE) long storeNodeId,
+                                  @Valid @RequestBody UploadRequest request) {
+        return uploadService.upload(storeNodeId, request.items());
     }
 
     @PostMapping("/heartbeat")

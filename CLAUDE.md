@@ -30,7 +30,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 ## Central y tienda
 
 - Es **un solo backend** con dos perfiles: `central` y `store`. El perfil decide qué módulos aceptan escrituras.
-- En la tienda, catálogo, precios, usuarios, roles y privilegios son **solo lectura** (escrituras → 403); llegan por sincronización.
+- En la tienda, catálogo, precios, usuarios, roles y privilegios son **solo lectura** (escrituras → 403); llegan por sincronización. Excepción: cada usuario puede cambiar su propia contraseña en la tienda; el cambio se aplica al momento, sube a la central y se replica.
 - La tienda siempre inicia la comunicación con la central; la central nunca llama a una tienda.
 - La central **no revalida** la lógica de negocio de documentos que suben las tiendas: solo verifica que lleguen completos y sin duplicados.
 - Todo cambio de datos maestros en la central escribe en `sync_change_log` en la misma transacción.

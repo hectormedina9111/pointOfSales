@@ -3,11 +3,13 @@ package com.medinasystems.pos.security.application;
 import java.time.Clock;
 import java.time.Instant;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.medinasystems.pos.security.LoginPolicy;
+import com.medinasystems.pos.security.PasswordChangedEvent;
 import com.medinasystems.pos.security.domain.AppUser;
 import com.medinasystems.pos.security.domain.RefreshToken;
 import com.medinasystems.pos.security.domain.Role;
@@ -30,15 +32,18 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final LoginPolicy loginPolicy;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public AuthService(AppUserRepository users, RefreshTokenRepository refreshTokens, TokenService tokens,
-                       PasswordEncoder passwordEncoder, LoginPolicy loginPolicy, Clock clock) {
+                       PasswordEncoder passwordEncoder, LoginPolicy loginPolicy, Clock clock,
+                       ApplicationEventPublisher events) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.tokens = tokens;
         this.passwordEncoder = passwordEncoder;
         this.loginPolicy = loginPolicy;
         this.clock = clock;
+        this.events = events;
     }
 
     /**
@@ -84,6 +89,10 @@ public class AuthService {
                 .ifPresent(token -> token.revoke(clock.instant()));
     }
 
+    /**
+     * The user changes the own password. It works on the central node and on a store: the change is applied at once,
+     * and on a store it is also queued for the central node (see PasswordChangedEvent).
+     */
     public void changePassword(String username, String currentPassword, String newPassword) {
         AppUser user = users.findByUsername(username).orElseThrow(InvalidCredentialsException::new);
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
@@ -96,8 +105,10 @@ public class AuthService {
             throw new BusinessRuleException("password.same_as_current",
                     "The new password must be different from the current one");
         }
-        user.changePassword(passwordEncoder.encode(newPassword));
-        refreshTokens.revokeAllForUser(user, clock.instant());
+        Instant now = clock.instant();
+        user.changePassword(passwordEncoder.encode(newPassword), now);
+        refreshTokens.revokeAllForUser(user, now);
+        events.publishEvent(new PasswordChangedEvent(user.getId(), user.getPasswordHash(), now));
     }
 
     @Transactional(readOnly = true)

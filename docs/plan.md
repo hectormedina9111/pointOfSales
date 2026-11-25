@@ -1423,8 +1423,8 @@ Alcance: registro de tiendas en la central, activación, credenciales de la tien
 
 **Solo central y solo lectura en la tienda**
 
-- Con `@CentralOnly` (403 `READ_ONLY_NODE` en la tienda): todo `/api/v1/store-nodes` (incluida la lectura, porque la lista de tiendas es dato de la central), `POST /api/v1/sync/activate`, `GET /api/v1/sync/ping` y `POST /api/v1/me/password`.
-- Consecuencia de `/me/password`: un usuario que debe cambiar la contraseña inicial lo hace en la central. La tienda no puede cambiarla hasta que el usuario llegue por replicación.
+- Con `@CentralOnly` (403 `READ_ONLY_NODE` en la tienda): todo `/api/v1/store-nodes` (incluida la lectura, porque la lista de tiendas es dato de la central), `POST /api/v1/sync/activate` y `GET /api/v1/sync/ping`.
+- `POST /api/v1/me/password` ya no es solo central: el usuario puede cambiar su contraseña en la tienda. Ver "Decisiones de implementación: cambio de contraseña en la tienda" más abajo.
 - `GET /api/v1/sync/status`: en la central responde 200 con `node: "CENTRAL"` y el resto de los campos vacíos. En la tienda, `node: "STORE"` y `activated` indica si ya tiene identidad. Nunca incluye el token.
 
 **Activación de la tienda**
@@ -1598,3 +1598,45 @@ Alcance: datos iniciales, fecha de negocio, orden de confirmación y purga del r
 - **Criterio 8 (tiempo de búsqueda):** no medido; no hay script de carga de 10 000 productos.
 - **Pruebas:** no hay pruebas en el repositorio (primera etapa). `./mvnw verify` solo compila. La comprobación de este paso fue solo sintáctica (`javac` sin dependencias, sin errores de sintaxis).
 - **Máquina virtual:** `vagrant up`, el script de corte y el reinicio no se han ejecutado en esta sesión.
+
+### Decisiones de implementación: cambio de contraseña en la tienda
+
+**Principio**
+
+- Los usuarios siguen perteneciendo a la central. La contraseña es el único dato de usuario que una tienda puede cambiar; nombre, roles, privilegios y sucursales siguen siendo de solo lectura en la tienda.
+- Un usuario es una sola persona y su contraseña es la misma en todos los nodos. Por eso el cambio se aplica en la tienda al momento, se encola y se sube a la central, y la central lo replica a todos los nodos.
+
+**Flujo**
+
+1. `POST /api/v1/me/password` funciona en la central y en la tienda (ya no tiene `@CentralOnly`). Se verifica la contraseña actual, se guarda el hash nuevo, se marca `must_change_password = false`, se fija `password_changed_at` con el reloj del nodo y se revocan los tokens de refresco del usuario. Todo en una transacción.
+2. En la misma transacción se publica `PasswordChangedEvent` (paquete raíz de `security`). En una tienda, un listener de `sync` inserta una fila en `sync_outbox` con `event_type = PASSWORD_CHANGED` y el payload `{userId, passwordHash, changedAt}`. Si la transacción falla, no queda ni el cambio ni la fila.
+3. El ciclo de sincronización de la tienda empieza subiendo las filas pendientes (`POST /api/v1/sync/uploads`, con `X-Store-Token`). Si la subida falla, el ciclo se detiene: no se pide ningún cambio ni se carga copia completa. Así una contraseña vieja replicada nunca pisa una nueva que la central todavía no conoce.
+4. Después: latido (que informa `pendingUploadCount` y `oldestPendingAt`), copia completa si falta, y cambios. El orden es "subir antes de bajar".
+
+**Central**
+
+- Para cada fila se aplica la regla de última escritura gana, comparando `changedAt` con `app_user.password_changed_at` (`AppUser.applyRemotePasswordChange`). Un cambio igual o anterior no se aplica y se responde `ACCEPTED` con código `STALE`: la central ya tiene algo más reciente y la tienda lo recibirá por replicación.
+- Se comprueba que el usuario esté asignado a la sucursal de la tienda (`user_branch`). Si la tienda no tiene sucursal, se rechaza con `BRANCH_NOT_ALLOWED`.
+- Usuario inexistente: `REJECTED` con `USER_NOT_FOUND`. Tipo desconocido: `REJECTED` con `UNKNOWN_EVENT`. Payload incompleto o mal formado: `REJECTED` con `INVALID_PAYLOAD`.
+- Un cambio aplicado revoca los tokens de refresco del usuario y registra en la bitácora `PASSWORD_CHANGED_AT_STORE` (sin hash). Guardar el usuario dispara `sync_change_log`, así que la contraseña llega a todas las tiendas por replicación.
+- Cada fila se procesa en su propia transacción junto con su recibo en `sync_upload_receipt` (clave `store_node_id, outbox_id`). Si llega otra vez, se devuelve el resultado guardado, sin aplicar nada de nuevo. El recibo guarda solo ACCEPTED o REJECTED: un reenvío devuelve `ACCEPTED` sin el código `STALE`, que solo viene en la primera respuesta.
+
+**Réplica en la tienda**
+
+- Además del orden de ciclo, `ReplicaWriter` no sobrescribe `password_hash`, `must_change_password` ni `password_changed_at` de `app_user` cuando la fila que llega tiene un `password_changed_at` anterior al local (la cláusula `ON CONFLICT` usa `CASE` solo en esas columnas; el resto de la fila se actualiza siempre).
+
+**Qué viaja y qué no**
+
+- Solo viaja el hash BCrypt. Nunca la contraseña en claro. Ni el hash ni la contraseña se escriben en logs; `PasswordChangedEvent.toString()` omite el hash.
+
+**Tablas**
+
+- `app_user.password_changed_at` (V11): decide qué cambio gana. Todo cambio de contraseña y el alta del usuario lo fijan.
+- `sync_outbox` (solo tienda): cola de envíos. Es de solo anexar, sin columnas de auditoría: cada fila se marca como respondida (`uploaded_at`, `result`, `last_error` con el código) y nunca se borra. `attempts` cuenta los intentos fallidos.
+- `sync_upload_receipt` (solo central): recibos de los envíos. No están en el registro de replicación.
+
+**Pendiente y límites**
+
+- Un rechazo deja la contraseña de la tienda distinta de la de la central, hasta el siguiente cambio de ese usuario en la central. No se revierte la tienda: es raro (el usuario inició sesión en esa tienda, así que está asignado a su sucursal) y pide decidir la política de reconciliación.
+- Las fechas de la tienda y de la central se comparan tal cual. Un reloj de tienda adelantado puede ganar a un cambio posterior hecha en la central. Con NTP en ambos nodos la diferencia es de segundos.
+- Esta cola es la base de las subidas futuras (por ejemplo, las ventas): mismo `sync_outbox`, mismo endpoint `/sync/uploads` con un `eventType` nuevo, y el mismo recibo para no duplicar.
