@@ -1296,6 +1296,83 @@ El MVP del backend (base y catálogos, pasos 1 a 7) quedó terminado y unido a `
 
 Verificados manualmente por el responsable el 24 de noviembre de 2026 en el entorno local (Vagrant con central y dos tiendas). Las pruebas automatizadas quedan para la segunda etapa.
 
+## MVP 3A: caja y venta
+
+Siguiente MVP, decidido el 24 de noviembre de 2026, después de terminar el MVP del backend y el del frontend. Da pantallas a los roles de tienda (cajero y jefe de tienda) para abrir caja, vender, cobrar y cerrar caja. Las anulaciones y devoluciones (3B) y la facturación fiscal de Honduras con CAI (3C) van después.
+
+### Supuestos (a confirmar por el responsable)
+
+| Tema | Supuesto |
+| --- | --- |
+| Vendedor | En 3A una misma persona arma la venta y la cobra (cajero). Un rol "Vendedor" se puede crear desde Roles con menos privilegios; el flujo "vendedor arma, cajero cobra" queda para después |
+| Autorización del jefe de tienda | Se pide su usuario y contraseña (o los de alguien con el privilegio) para: descuento mayor al máximo permitido y retiro de efectivo de la caja |
+| Métodos de pago | Efectivo (con vuelto), tarjeta (referencia y últimos 4 dígitos) y transferencia (referencia). Crédito al cliente y saldo a favor, después |
+| Cliente | Consumidor final; el módulo de clientes llega después |
+| Documento | Ticket con número interno por caja; sin CAI hasta 3C. Las ventas quedan con `fiscal_status = NOT_REQUIRED` |
+| Existencias | No se valida existencia (el inventario llega después); los productos con seriales se venden sin capturar el serial hasta el módulo de inventario |
+
+### Dónde vive cada cosa
+
+- **Central (datos maestros, se replican):** cajas por sucursal (`cash_register`) y métodos de pago (`payment_method`). Se crean y editan solo en la central.
+- **Tienda (documentos, suben a la central):** sesiones de caja, movimientos de efectivo, ventas, líneas y pagos. Se crean solo en la tienda (la central responde 403 a esas escrituras) y suben por la cola `sync_outbox`, la misma del cambio de contraseña. La central los guarda tal cual, sin revalidar, y descarta duplicados.
+
+### Dentro del 3A
+
+- **Cajas y métodos de pago (central):** alta y edición de cajas por sucursal; activar o desactivar métodos de pago.
+- **Abrir caja:** el cajero elige caja libre y registra el fondo inicial. Una sola sesión abierta por caja y por cajero.
+- **Venta:**
+  - búsqueda por código de barras, SKU o nombre; el lector de código de barras agrega la línea al instante;
+  - cantidad, descuento por línea o a la venta (monto o porcentaje);
+  - totales en vivo con la base gravable y el ISV calculados hacia atrás desde el precio de la lista que corresponda;
+  - no se mezcla un producto de factura exclusiva con otros.
+- **Cobro:** uno o varios métodos de pago, vuelto en efectivo, clave de idempotencia para no cobrar dos veces.
+- **Ticket:** impresión desde el navegador en formato de 80 mm.
+- **Venta en espera:** guardar una venta sin cobrar y retomarla.
+- **Movimientos de efectivo:** depósitos y retiros con motivo (el retiro pide autorización).
+- **Cerrar caja (arqueo):** el cajero cuenta por método de pago; el sistema calcula lo esperado (fondo + efectivo cobrado − vuelto + depósitos − retiros) y la diferencia.
+- **Consulta:** listado de ventas y sesiones en la tienda (las suyas) y en la central (todas, con su tienda).
+- **Subida a la central:** sesiones y ventas pagadas suben automáticamente; el panel de tiendas muestra los envíos pendientes.
+
+**Fuera del 3A:** anulaciones y devoluciones (3B), CAI y numeración fiscal (3C), clientes y crédito, inventario y seriales, reportes.
+
+### Formularios con pasos (regla de la interfaz)
+
+Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con varios pasos se hacen como **asistente por pasos** (stepper), para guiar al usuario. En cada paso se marcan los campos obligatorios con `*`, y el asistente no deja avanzar hasta que esos campos son válidos; el último paso muestra un resumen antes de guardar. En el 3A usan pasos: abrir caja, cobro (revisar → pagos → confirmar e imprimir) y cierre de caja (contar → revisar diferencias → confirmar). El formulario de producto, que ya tiene muchos campos, se pasa también a pasos.
+
+### Roles y privilegios iniciales
+
+| Rol | Puede |
+| --- | --- |
+| Cajero (CASHIER) | Abrir y cerrar su caja, vender, poner en espera, cobrar, imprimir, depósitos, ver sus ventas |
+| Jefe de tienda (MANAGER) | Lo del cajero, autorizar descuentos mayores y retiros, ver todas las sesiones y ventas de la tienda |
+| Administrador (ADMIN) | Todo, incluidas cajas y métodos de pago en la central |
+
+### Orden de trabajo del 3A
+
+1. **Backend: cajas y métodos de pago** (central, replicados), menús y privilegios iniciales por rol.
+2. **Backend: sesiones de caja y movimientos** (tienda).
+3. **Backend: ventas** (cálculo de totales en el dominio, cotización, venta en espera, cobro con idempotencia, autorización de descuento, datos del ticket).
+4. **Backend: subida de sesiones y ventas** a la central por la cola y consulta en la central.
+5. **Frontend: componente de pasos** reutilizable con campos obligatorios por paso; cajas y métodos de pago; producto en pasos.
+6. **Frontend: caja** (abrir, movimientos, cerrar con arqueo).
+7. **Frontend: punto de venta** (pantalla de venta, cobro por pasos, ticket, ventas en espera).
+8. **Frontend: consulta de ventas y sesiones** en tienda y central.
+9. **Cierre:** README, colección de Hoppscotch y revisión de criterios.
+
+### Criterios de aceptación del 3A
+
+- [ ] En la central se crea una caja para la sucursal de la tienda 1 y llega a la tienda en menos de un minuto.
+- [ ] Un cajero de la tienda 1 abre caja con L 500.00 de fondo; no puede abrir una segunda caja.
+- [ ] Al escanear un código de barras la línea se agrega al instante; los totales muestran base e ISV correctos.
+- [ ] Un descuento mayor al permitido pide autorización del jefe de tienda.
+- [ ] Una venta de L 115.00 se cobra con L 100.00 en efectivo y L 15.00 con tarjeta; otra con L 200.00 en efectivo devuelve L 85.00 de vuelto.
+- [ ] Repetir el cobro con la misma clave de idempotencia no crea otra venta.
+- [ ] Una venta en espera se retoma y se cobra.
+- [ ] El ticket se imprime en 80 mm con los datos de la empresa, la sucursal, las líneas, el ISV y los pagos.
+- [ ] El cierre de caja muestra esperado, contado y diferencia por método de pago.
+- [ ] Con la tienda 1 sin internet se sigue vendiendo; al volver, las ventas suben y aparecen en la central.
+- [ ] Los formularios de pasos marcan los obligatorios y no dejan avanzar sin ellos.
+
 ## Decisiones y preguntas abiertas
 
 Las respuestas del 16 de octubre fijan diez decisiones; quedan siete preguntas por cerrar antes de escribir código.
