@@ -1,13 +1,18 @@
 package com.medinasystems.pos.sales.domain;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 import com.medinasystems.pos.shared.AuditableEntity;
@@ -87,6 +92,11 @@ public class SaleLine extends AuditableEntity {
     @Column(name = "original_line_id")
     private Long originalLineId;
 
+    /** The serial numbers of the line. In a sale they are sold; in a return they come back, marked as returned. */
+    @OneToMany(mappedBy = "saleLine", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("id")
+    private List<SaleLineSerial> serials = new ArrayList<>();
+
     private static final BigDecimal NO_QUANTITY = new BigDecimal("0.000");
 
     protected SaleLine() {
@@ -112,6 +122,9 @@ public class SaleLine extends AuditableEntity {
         this.listPrice = original.listPrice();
         this.priceOverridden = original.priceOverridden();
         this.originalLineId = original.id();
+        for (String number : calculated.serialNumbers()) {
+            serials.add(new SaleLineSerial(this, number, true));
+        }
     }
 
     /** Adds a quantity returned from this line. The caller has checked that it does not exceed what is left. */
@@ -145,6 +158,33 @@ public class SaleLine extends AuditableEntity {
         this.priceListId = line.priceListId();
         this.listPrice = line.listPrice();
         this.priceOverridden = line.priceOverridden();
+        for (String number : line.serialNumbers()) {
+            serials.add(new SaleLineSerial(this, number, false));
+        }
+    }
+
+    /** Marks these serial numbers of the line as returned. The caller has checked that the line sold them. */
+    public void markSerialsReturned(List<String> numbers) {
+        for (SaleLineSerial serial : serials) {
+            if (numbers.contains(serial.getSerialNumber())) {
+                serial.markReturned();
+            }
+        }
+    }
+
+    /** Every serial number of the line, in the order they were stored. */
+    public List<String> getSerialNumbers() {
+        return serials.stream().map(SaleLineSerial::getSerialNumber).toList();
+    }
+
+    /** The serial numbers of the line that came back. */
+    public List<String> getReturnedSerialNumbers() {
+        return serials.stream().filter(SaleLineSerial::isReturned).map(SaleLineSerial::getSerialNumber).toList();
+    }
+
+    /** The serial numbers of the line that did not come back yet. */
+    public List<String> getReturnableSerialNumbers() {
+        return serials.stream().filter(serial -> !serial.isReturned()).map(SaleLineSerial::getSerialNumber).toList();
     }
 
     public Short getLineNumber() {
