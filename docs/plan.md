@@ -2177,3 +2177,45 @@ Los privilegios ENDPOINT se generan con el método y la ruta en mayúsculas, con
 - Devolver una venta de otra tienda, reservas (`sale_return_claim`) y conflictos: paso 3.
 - Usar el saldo de la nota de crédito en un cobro: paso 2.
 - Sin compilar ni probar en esta sesión: `./mvnw verify` y el CI quedan para verificar.
+
+### Decisiones de implementación: 3B paso 2 (notas de crédito)
+
+**Llamadas de la tienda a la central.** `CentralGateway` (raíz de `sync`) hace GET y POST a la central con el token de la tienda, conexión de 3 s y lectura de 10 s. Una conexión caída, un 5xx o un 401/403 lanzan `CentralUnavailableException` (503, `CENTRAL_UNAVAILABLE`). Una respuesta problema conserva su código y su estado: 404 → `BusinessNotFoundException`, 409 → `BusinessConflictException`, otro 4xx → `BusinessRuleException`. En la central el bean existe y lanza si se usa. Las rutas se validan antes de enviarse (ver abajo), así que no necesitan codificarse.
+
+**Réplica.** `credit_note` se replica después de `customer` (`SyncTables`, disparador `sync_log_credit_note`). La clave foránea de `return_sale_id` se conserva: la réplica no revisa claves foráneas. `credit_note_redemption` solo vive en la central.
+
+**Método CREDIT_NOTE.** Lo crea `PaymentMethodSeeder` (Java, solo central), no la migración: así llega a las tiendas por la réplica de `payment_method`. Sin referencia y sin vuelto.
+
+**Saldo (central).** `CreditNoteRedemptionService` bloquea la nota (`FOR UPDATE`) antes de leer la redención; así dos peticiones sobre la misma nota o clave van en orden.
+- Canje con la misma clave: si ya está `APPLIED` o `CONFIRMED`, responde esa misma redención sin tocar el saldo. Si estaba `RELEASED`, vuelve a descontar. Con otra nota, monto o tienda responde 409 `CREDIT_NOTE_REDEMPTION_CONFLICT` (código nuevo).
+- Saldo insuficiente o nota `USED`: 422 `CREDIT_NOTE_INSUFFICIENT_BALANCE`. La nota pasa a `USED` al llegar a cero; al liberar vuelve a `ACTIVE`.
+- Liberar: clave desconocida, ya liberada o de otra tienda → `NOT_APPLIED` (200). Clave `CONFIRMED` → 409 `CREDIT_NOTE_REDEMPTION_CONFIRMED`.
+- Los cambios de saldo van por JPA, así que el disparador los replica.
+
+**Cobro en la tienda (`CentralCreditNotes`).**
+- Clave de cada pago: `{clave de idempotencia}:{posición}`. Como la clave viaja en la URL, la clave de idempotencia debe tener solo `A-Z a-z 0-9 . _ : -`; si no, 422 `INVALID_IDEMPOTENCY_KEY`. El número se recorta de espacios y debe tener solo letras, dígitos, guion o guion bajo (viaja en la ruta); si no, 404 sin llamar a la central. Los prefijos de recibo todavía no se validan con esa regla: pendiente.
+- Después de las validaciones locales y antes de guardar, se canjea cada pago. La clave se registra antes de llamar, así que una respuesta perdida también se libera.
+- `TransactionSynchronization`: si la transacción del cobro no se confirma, cada clave se libera. Si la central no responde, la liberación va a la cola (`CREDIT_NOTE_RELEASE`); la central la aplica con `CreditNoteReleaseUploadHandler`.
+- La idempotencia del cobro se revisa antes de canjear, como antes.
+
+**Subida de ventas.** `PaymentDocument` lleva `creditNoteId` y `redemptionKey`. La central confirma cada canje por su clave y la tienda que la hizo; si falta o ya se liberó, acepta la venta y deja un aviso en el log. No revalida.
+
+**Reglas.** `PaymentRules`: `CREDIT_NOTE_NUMBER_REQUIRED` y `DUPLICATE_CREDIT_NOTE_PAYMENT` (por número normalizado). `RefundRules`: un reembolso con `CREDIT_NOTE` se rechaza con `REFUND_METHOD_NOT_ALLOWED`. En la caja no tiene efecto en efectivo: aparece bajo su método.
+
+**Vistas.** `PaymentView.creditNoteNumber` se calcula con el número de la nota local (la réplica la trae). El ticket lo muestra.
+
+**API y privilegios.**
+
+| Método y ruta | Dónde | Privilegio |
+| --- | --- | --- |
+| `GET /api/v1/credit-notes/lookup?number=` | tienda (`@StoreOnly`) | `GET_CREDIT_NOTES_LOOKUP` (cajero, jefe) |
+| `GET /api/v1/credit-notes/{id}/redemptions` | central (`@CentralOnly`), paginado en la base de datos | `GET_CREDIT_NOTES_ID_REDEMPTIONS` (jefe) |
+| `GET /api/v1/sync/credit-notes/{number}` | central, con token de tienda | sin privilegio de usuario (ruta exenta) |
+| `POST /api/v1/sync/credit-notes/{number}/redemptions` | central, con token de tienda | ídem |
+| `POST /api/v1/sync/credit-notes/redemptions/{key}/release` | central, con token de tienda | ídem |
+
+**Pendiente y límites.**
+- Una venta con nota de crédito no se cobra sin conexión: la tienda responde 503. Es lo que pide el plan.
+- Si una venta con nota de crédito se cobra en la central, `CentralNodeGateway` lanza y la petición falla con 500. No se valida todavía.
+- La réplica de una tienda que vuelve a cargar la foto inicial borra las notas locales que aún no subieron (igual que los demás datos replicados). Revisar antes del piloto.
+- Sin compilar ni probar en esta sesión: `./mvnw verify` y el CI quedan para verificar.

@@ -31,10 +31,12 @@ public class PaymentMethodSeeder implements ApplicationRunner {
     record Seed(String code, String name, boolean requiresReference, boolean allowsChange) {
     }
 
+    /** CREDIT_NOTE pays with the balance of a credit note: no reference, and no change. */
     static final List<Seed> SEEDS = List.of(
             new Seed("CASH", "Efectivo", false, true),
             new Seed("CARD", "Tarjeta", true, false),
-            new Seed("TRANSFER", "Transferencia", true, false));
+            new Seed("TRANSFER", "Transferencia", true, false),
+            new Seed("CREDIT_NOTE", "Nota de crédito", false, false));
 
     private final PaymentMethodRepository methods;
 

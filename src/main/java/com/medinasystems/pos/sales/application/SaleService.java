@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
@@ -39,6 +40,7 @@ import com.medinasystems.pos.pricing.ProductPricing;
 import com.medinasystems.pos.sales.domain.CreditNote;
 import com.medinasystems.pos.sales.domain.Discount;
 import com.medinasystems.pos.sales.domain.OrderType;
+import com.medinasystems.pos.sales.domain.Payment;
 import com.medinasystems.pos.sales.domain.PaymentDraft;
 import com.medinasystems.pos.sales.domain.PaymentMethod;
 import com.medinasystems.pos.sales.domain.PaymentRules;
@@ -100,6 +102,7 @@ public class SaleService {
     private final Outbox outbox;
     private final AuditorAware<String> auditor;
     private final ApplicationEventPublisher events;
+    private final CentralCreditNotes centralCredits;
     private final Clock clock;
 
     public SaleService(SaleRepository sales, CreditNoteRepository creditNotes, PaymentMethodRepository methods,
@@ -108,7 +111,8 @@ public class SaleService {
                        OpenSessions openSessions, BranchDirectory branches, CompanyDirectory companies,
                        CashRegisterDirectory registers, UserDirectory users, ActionAuthorizer authorizer,
                        BranchScope scope, SalesProperties properties, Outbox outbox,
-                       AuditorAware<String> auditor, ApplicationEventPublisher events, Clock clock) {
+                       AuditorAware<String> auditor, ApplicationEventPublisher events, CentralCreditNotes centralCredits,
+                       Clock clock) {
         this.sales = sales;
         this.creditNotes = creditNotes;
         this.methods = methods;
@@ -127,6 +131,7 @@ public class SaleService {
         this.outbox = outbox;
         this.auditor = auditor;
         this.events = events;
+        this.centralCredits = centralCredits;
         this.clock = clock;
     }
 
@@ -297,7 +302,8 @@ public class SaleService {
         CustomerInfo customer = findCustomer(sale.getCustomerId());
         CreditNote creditNote = creditNotes.findByReturnSaleId(sale.getId()).orElse(null);
         ZoneId zone = ZoneId.of(company.timeZone());
-        return TicketView.of(sale, company, branch, register, cashier, customer, creditNote, zone);
+        return TicketView.of(sale, company, branch, register, cashier, customer, creditNote,
+                creditNoteNumbers(sale), zone);
     }
 
     /**
@@ -324,6 +330,8 @@ public class SaleService {
         Sale sale = prepare.apply(session);
         List<PaymentDraft> drafts = paymentDrafts(payments);
         BigDecimal change = PaymentRules.check(sale.getTotal(), drafts);
+        // Local checks passed: the credit notes are taken at the central node, before anything is saved.
+        drafts = centralCredits.redeem(drafts, idempotencyKey);
         String receiptNumber = session.receiptPrefix() + String.format(Locale.ROOT, "%08d", counter.next());
         sale.pay(receiptNumber, idempotencyKey, drafts, change, clock.instant());
         counters.save(counter);
@@ -408,7 +416,7 @@ public class SaleService {
             PaymentMethod method = methods.findByCode(payment.paymentMethodCode()).orElseThrow(
                     () -> new BusinessRuleException("PAYMENT_METHOD_NOT_FOUND", "The payment method does not exist"));
             drafts.add(new PaymentDraft(method, payment.amount(), payment.amountReceived(), payment.reference(),
-                    payment.cardLast4()));
+                    payment.cardLast4(), CentralCreditNotes.normalize(payment.creditNoteNumber()), null, null));
         }
         return drafts;
     }
@@ -462,7 +470,18 @@ public class SaleService {
                 .map(note -> new SaleView.CreditNoteRef(note.getId(), note.getNumber(), note.getAmount(),
                         note.getBalance()))
                 .orElse(null);
-        return SaleView.from(sale, findCustomer(sale.getCustomerId()), returns, creditNote);
+        return SaleView.from(sale, findCustomer(sale.getCustomerId()), returns, creditNote, creditNoteNumbers(sale));
+    }
+
+    /** The numbers of the credit notes that a sale was paid with, by note id. */
+    Map<Long, String> creditNoteNumbers(Sale sale) {
+        List<Long> ids = sale.getPayments().stream().map(Payment::getCreditNoteId)
+                .filter(Objects::nonNull).distinct().toList();
+        Map<Long, String> numbers = new HashMap<>();
+        for (CreditNote note : creditNotes.findAllById(ids)) {
+            numbers.put(note.getId(), note.getNumber());
+        }
+        return numbers;
     }
 
     /** Lists a page of sales, looking up each customer once even when many sales share it. */

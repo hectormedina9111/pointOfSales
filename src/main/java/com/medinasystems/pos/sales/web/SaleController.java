@@ -209,10 +209,12 @@ public class SaleController {
                                  @NotNull @Positive BigDecimal amount,
                                  @PositiveOrZero BigDecimal amountReceived,
                                  @Size(max = 60) String reference,
-                                 @Size(max = 4) String cardLast4) {
+                                 @Size(max = 4) String cardLast4,
+                                 @Size(max = 60) String creditNoteNumber) {
 
         SaleData.PaymentLine toData() {
-            return new SaleData.PaymentLine(paymentMethodCode, amount, amountReceived, reference, cardLast4);
+            return new SaleData.PaymentLine(paymentMethodCode, amount, amountReceived, reference, cardLast4,
+                    creditNoteNumber);
         }
     }
 
@@ -280,7 +282,7 @@ public class SaleController {
                                 @Size(max = 60) String reference) {
 
         SaleData.PaymentLine toData() {
-            return new SaleData.PaymentLine(paymentMethodCode, amount, null, reference, null);
+            return new SaleData.PaymentLine(paymentMethodCode, amount, null, reference, null, null);
         }
     }
 

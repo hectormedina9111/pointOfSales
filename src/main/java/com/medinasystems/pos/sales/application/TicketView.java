@@ -6,6 +6,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 
 import com.medinasystems.pos.cash.CashRegisterInfo;
 import com.medinasystems.pos.customer.CustomerInfo;
@@ -42,7 +43,8 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
     }
 
     public static TicketView of(Sale sale, CompanyInfo company, BranchInfo branch, CashRegisterInfo register,
-                                UserInfo cashier, CustomerInfo customer, CreditNote creditNote, ZoneId zone) {
+                                UserInfo cashier, CustomerInfo customer, CreditNote creditNote,
+                                Map<Long, String> creditNoteNumbers, ZoneId zone) {
         var local = sale.getPaidAt().atZone(zone);
         return new TicketView(
                 new TicketCompany(company.legalName(), company.tradeName(), company.taxId()),
@@ -61,7 +63,7 @@ public record TicketView(TicketCompany company, TicketBranch branch, String cash
                 sale.getLines().stream().map(line -> new TicketLine(line.getDescription(), line.getQuantity(),
                         line.getUnitPrice(), line.getDiscountAmount(), line.getTotal())).toList(),
                 SaleTotalsView.from(sale),
-                sale.getPayments().stream().map(payment -> PaymentView.from(payment)).toList(),
+                sale.getPayments().stream().map(payment -> PaymentView.from(payment, creditNoteNumbers)).toList(),
                 sale.getChangeDue(),
                 sale.getType(),
                 sale.getOriginalReceiptNumber(),
