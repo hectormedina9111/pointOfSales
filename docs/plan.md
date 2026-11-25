@@ -1523,6 +1523,9 @@ Alcance: registro de tiendas en la central, activación, credenciales de la tien
 - El número se asigna como `máximo + 1`, empezando en 1. Con dos alta simultáneas, una de las dos choca con la unicidad de `node_number` y responde 500. No se maneja todavía.
 - `node_number` es `SMALLINT`, así que el límite es 32 767. Más allá se responde `STORE_NODE_LIMIT_REACHED` (422).
 - `IdRangeSequenceAdjuster` recorre todas las tablas del esquema con una columna `id` de identidad (excepto `flyway_schema_history`) y pone cada secuencia en `max(inicio, máximo del rango + 1)`. Puede retroceder una secuencia sobre ids que nunca se confirmaron. Si el nombre de una tabla no pasa la expresión regular `^[a-z_][a-z0-9_]*$`, el proceso falla en lugar de saltarse la tabla. Si el rango se agota, también falla.
+- **Garantía de la tienda (paso 11):** después de moverla, cada secuencia recibe `MAXVALUE` igual al fin de su rango. Si el rango se agota, PostgreSQL rechaza el siguiente id en lugar de usar un id de otro nodo. El valor se fija antes del límite, para que el orden de las dos operaciones nunca falle.
+- **Garantía de la central (paso 11):** `CentralSequenceCap` pone las secuencias de la central en `MAXVALUE 999 999 999` al arrancar, sin moverlas. Si alguna ya pasó de ese valor, la central no arranca y lo dice en el mensaje.
+- **Garantía de la subida (paso 11):** antes de escribir, la central comprueba que cada id que crea la tienda esté dentro de `store_node.id_range_start`..`id_range_end`: la venta, su número interno, sus líneas y pagos; la sesión y sus movimientos; el cliente. Si alguno está fuera, responde `REJECTED` con `ID_OUT_OF_RANGE`. El cambio de contraseña no se revisa, porque actualiza un usuario que ya existe.
 
 **Códigos y tokens**
 
@@ -1989,3 +1992,51 @@ Caso base del criterio de aceptación: L 115.00 con ISV 15 % → base 100.00, IS
 - Las ventas todavía no guardan `customer_id`: eso llega en el siguiente paso, donde se probará el precio por lista de cliente.
 - Duplicados entre tiendas: la central todavía no decide cuál registro prevalece; queda para una revisión posterior.
 - Sin pruebas (segunda etapa, según CLAUDE.md). El código no se compiló en esta sesión; `./mvnw verify` queda para el equipo y el CI.
+
+### Decisiones de implementación: 3A paso 11 (orden y cobro separados)
+
+Este paso implementa "Orden y cobro" y, además, la garantía de que ningún id creado en una tienda choca con otro nodo (parte B).
+
+**Migración V17 (`V17__sale_orders.sql`).** `sale.customer_id` (por defecto 1, consumidor final), `sale.order_type` (`CASH` o `CREDIT`, con `CHECK`), `sale.price_authorized_by`, `sale_line.list_price` (se rellena con el precio vigente y después queda `NOT NULL`) y `sale_line.price_overridden`. Ninguna migración anterior cambió.
+
+**Reglas de la orden (`SaleService`, `OrderType`, `SaleOrder`).**
+
+- **Cliente:** sin cliente se usa el consumidor final. Un cliente que no existe responde 404 (`NOT_FOUND`, recurso `customer`), como cualquier recurso que no existe; no se creó un código `CUSTOMER_NOT_FOUND`. Un cliente inactivo responde `CUSTOMER_INACTIVE` (422).
+- **Tipo de orden:** sin tipo es `CASH`. `CREDIT` responde `CREDIT_NOT_AVAILABLE` (422) en la cotización, al guardar y al cobrar, hasta el módulo de crédito.
+- **Precio:** cada línea toma el precio de la lista del cliente y, si la lista no da precio, el de la sucursal (`ProductPricing.quote` con `priceListId`). Un `unitPrice` distinto del precio de lista es un cambio de precio: la línea vende a ese precio, guarda `list_price` y `price_overridden = true`. Un `unitPrice` igual al de lista no cuenta como cambio.
+- **Autorización del cambio de precio:** la hace quien tenga `ACTION_SALE_PRICE_OVERRIDE`; si no, hace falta `authorization` (usuario y contraseña de quien lo tenga), validada con `ActionAuthorizer`. Sin ella: `PRICE_OVERRIDE_AUTHORIZATION_REQUIRED` (422). El autorizador queda en `price_authorized_by`. El descuento y el precio se validan por separado; las mismas credenciales sirven para los dos si quien las da tiene ambos privilegios.
+- **Cuándo se autoriza:** al guardar la orden (`POST /sales/holds` y `PUT /sales/holds/{id}`) y al cobrar directo (`POST /sales`). Cobrar una orden guardada no vuelve a pedir autorización: usa los precios guardados.
+- **Cotización:** `POST /sales/quote` aplica la lista del cliente y los cambios de precio, pero no pide autorización. Informa `discountAuthorizationRequired` y `priceAuthorizationRequired` para que la pantalla avise antes de guardar.
+
+**Endpoints.**
+
+| Método y ruta | Cambio |
+| --- | --- |
+| `POST /sales/quote` | `customerId`, `orderType` y `unitPrice` por línea; respuesta con las dos banderas de autorización |
+| `POST /sales/holds` | Valida descuento y cambio de precio al guardar; 201 |
+| `PUT /sales/holds/{id}` | Nuevo. Reemplaza cliente, tipo, líneas, descuento y notas de una espera de la caja abierta; 200 |
+| `POST /sales/holds/{id}/checkout` | Nuevo. Cobra la espera con sus líneas guardadas; 201, o 200 si la clave de idempotencia ya cobró la venta |
+| `POST /sales` | Cobro directo con `customerId` y `orderType`; sin cambios en su respuesta |
+
+**Cobro compartido.** Los dos cobros usan un solo método (`charge`): comprueban la clave de idempotencia, bloquean el correlativo de la caja, preparan la venta (precio nuevo o espera encontrada), revisan los pagos contra el total guardado, numeran el recibo, registran `SALE_PAID` y encolan la subida. El cobro de una espera acepta notas opcionales, que reemplazan las de la venta cuando llegan.
+
+**Vistas.** `SaleView`, `SaleSummaryView` y `TicketView` llevan `customerId`, `customerName`, `customerDocumentType`, `customerDocumentNumber` y `orderType`. `SaleView` lleva además `priceAuthorizedBy`. `SaleLineView` lleva `listPrice` y `priceOverridden`. Los listados buscan cada cliente una sola vez, aunque varias ventas sean del mismo cliente.
+
+**Subida (`SALE_PAID`).** La venta envía `customerId`, `orderType` y `priceAuthorizedBy`; cada línea envía `listPrice` y `priceOverridden`. La central responde `RETRY` con `CUSTOMER_MISSING` si el cliente todavía no llegó, igual que con la sesión.
+
+**Privilegios.** `ACTION_SALE_PRICE_OVERRIDE` se da al jefe de tienda (y al administrador por el menú). El cajero recibe `PUT_SALES_HOLDS_ID` y `POST_SALES_HOLDS_ID_CHECKOUT`.
+
+**Parte B: ids que no chocan entre nodos.**
+
+- **Tienda:** `IdRangeSequenceAdjuster` pone cada secuencia en el primer id libre de su rango y luego le pone `MAXVALUE` con el fin del rango (`ALTER SEQUENCE ... MAXVALUE`). Si el rango se agota, PostgreSQL rechaza el siguiente id en lugar de usar el de otro nodo. El valor se fija antes del límite.
+- **Central:** `CentralSequenceCap` (perfil `central`, al arrancar) pone las secuencias de la central en `MAXVALUE 999 999 999` sin moverlas. Si una ya pasó de ese valor, la central no arranca.
+- **Subida:** `StoreIdRanges.contains` (API pública de `sync`) se usa en `SaleUploadHandler`, `CashSessionUploadHandler` y `CustomerUploadHandler`. Antes de escribir, comprueba que cada id creado por la tienda esté en su rango: la venta, su número interno (la central lo guarda con `UNIQUE`), sus líneas, sus pagos, la sesión, sus movimientos y el cliente. Un id fuera del rango responde `REJECTED` con `ID_OUT_OF_RANGE`. El cambio de contraseña no se revisa.
+
+**Mensajes.** `CREDIT_NOT_AVAILABLE`, `CUSTOMER_INACTIVE`, `PRICE_OVERRIDE_AUTHORIZATION_REQUIRED` e `ID_OUT_OF_RANGE`, en `messages.properties` y `messages_es.properties`.
+
+**Pendiente y límites**
+
+- **Cliente desactivado después de guardar la orden:** el cobro de una espera no vuelve a revisar si el cliente sigue activo. Se decide si debe.
+- **Número interno en la subida:** la central revisa también el número interno, que no está en la lista de ids del plan pero tiene `UNIQUE` en la central.
+- **Autorizaciones repetidas:** si descuento y precio exigen autorización y las credenciales son de un jefe con ambos privilegios, el autorizador se consulta dos veces. Es correcto, pero cuenta dos veces para el bloqueo si la contraseña falla.
+- **Sin compilar ni probar en esta sesión.** No hay caché de Maven en el entorno; `./mvnw verify` queda para el equipo y el CI. Las pruebas van en la segunda etapa, según CLAUDE.md.
