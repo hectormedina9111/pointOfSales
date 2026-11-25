@@ -1,6 +1,7 @@
 package com.medinasystems.pos.sync.domain;
 
 import java.time.Instant;
+import java.util.Objects;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -129,6 +130,15 @@ public class StoreIdentity extends AuditableEntity {
     /** The central node purged changes this store still needs: the next cycle loads a full snapshot again. */
     public void requireSnapshot() {
         this.snapshotCompletedAt = null;
+    }
+
+    /** Sets the branch the central node reports for this store, or clears it. Returns true when it changed. */
+    public boolean updateBranch(Long branchId) {
+        if (Objects.equals(this.branchId, branchId)) {
+            return false;
+        }
+        this.branchId = branchId;
+        return true;
     }
 
     /** Moves the applied version forward. It never goes back. */

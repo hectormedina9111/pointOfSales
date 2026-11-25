@@ -47,6 +47,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 new Object[] {ex.getResource(), String.valueOf(ex.getId())}, LocaleContextHolder.getLocale());
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, detail);
         problem.setTitle(messages.getMessage("title.NOT_FOUND", null, LocaleContextHolder.getLocale()));
+        problem.setProperty("code", "NOT_FOUND");
         problem.setProperty("resource", ex.getResource());
         problem.setProperty("id", ex.getId());
         return problem;
@@ -91,6 +92,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (response.getBody() instanceof ProblemDetail problem) {
             Locale locale = LocaleContextHolder.getLocale();
             problem.setDetail(messages.getMessage("error.VALIDATION_FAILED", null, locale));
+            problem.setProperty("code", "VALIDATION_FAILED");
 
             List<Map<String, Object>> errors = new ArrayList<>();
             for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {

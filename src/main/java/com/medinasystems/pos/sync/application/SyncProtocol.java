@@ -49,6 +49,10 @@ public final class SyncProtocol {
                                    @Min(0) int pendingUploadCount, Instant oldestPendingAt) {
     }
 
-    public record HeartbeatResponse(long latestVersion) {
+    /**
+     * The central node's latest version, and the branch it has for this store (null when none). The store updates
+     * its own branch from it, so a branch assigned in the central node reaches the store on the next heartbeat.
+     */
+    public record HeartbeatResponse(long latestVersion, Long branchId) {
     }
 }

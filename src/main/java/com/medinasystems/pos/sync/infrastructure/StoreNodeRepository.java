@@ -17,4 +17,6 @@ public interface StoreNodeRepository extends JpaRepository<StoreNode, Long> {
     Optional<StoreNode> findByCredentialHash(String credentialHash);
 
     boolean existsByBranchId(Long branchId);
+
+    boolean existsByBranchIdAndIdNot(Long branchId, Long id);
 }

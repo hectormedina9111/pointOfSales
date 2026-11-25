@@ -113,12 +113,13 @@ public class SecurityConfig {
     private static void unauthorized(ProblemJsonWriter problems, HttpServletRequest request,
                                      HttpServletResponse response) throws IOException {
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        problems.write(request, response, HttpStatus.UNAUTHORIZED, "title.UNAUTHENTICATED",
+        problems.write(request, response, HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "title.UNAUTHENTICATED",
                 "error.UNAUTHENTICATED");
     }
 
     private static void forbidden(ProblemJsonWriter problems, HttpServletRequest request,
                                   HttpServletResponse response) throws IOException {
-        problems.write(request, response, HttpStatus.FORBIDDEN, "title.FORBIDDEN", "error.ACCESS_DENIED");
+        problems.write(request, response, HttpStatus.FORBIDDEN, "ACCESS_DENIED", "title.FORBIDDEN",
+                "error.ACCESS_DENIED");
     }
 }

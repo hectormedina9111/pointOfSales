@@ -3,6 +3,7 @@ package com.medinasystems.pos.sync.application;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -88,6 +89,30 @@ public class StoreNodeService {
         node.revoke(clock.instant());
         events.publishEvent(AuditEvent.updated("STORE_NODE_REVOKED", "store_node", node.getId(), before,
                 StoreNodeSnapshot.of(node)));
+        return view(node);
+    }
+
+    /**
+     * Assigns the branch a store serves, or clears it with null. A branch belongs to one store at most. The store
+     * receives the change on its next heartbeat.
+     */
+    public StoreNodeView assignBranch(long id, Long branchId) {
+        StoreNode node = find(id);
+        if (branchId != null) {
+            if (!branches.exists(branchId)) {
+                throw new BusinessRuleException("BRANCH_NOT_FOUND", "One or more branch ids do not exist");
+            }
+            if (nodes.existsByBranchIdAndIdNot(branchId, id)) {
+                throw new BusinessRuleException("DUPLICATE_STORE_BRANCH", "The branch already has a store node");
+            }
+        }
+        Long previous = node.getBranchId();
+        Map<String, Object> before = StoreNodeSnapshot.of(node);
+        node.assignBranch(branchId);
+        if (!Objects.equals(previous, branchId)) {
+            events.publishEvent(AuditEvent.updated("STORE_NODE_BRANCH_CHANGED", "store_node", node.getId(), before,
+                    StoreNodeSnapshot.of(node)));
+        }
         return view(node);
     }
 

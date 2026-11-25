@@ -110,7 +110,7 @@ public class CentralSyncService {
         StoreNode node = find(storeNodeId);
         node.recordHeartbeat(clock.instant(), Math.max(0L, request.appliedVersion()), request.appVersion(),
                 request.pendingUploadCount(), request.oldestPendingAt());
-        return new HeartbeatResponse(reader.latestVersion());
+        return new HeartbeatResponse(reader.latestVersion(), node.getBranchId());
     }
 
     private Change toChange(ChangedEntity entity) {

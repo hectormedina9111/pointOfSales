@@ -2,6 +2,7 @@ package com.medinasystems.pos.organization.application;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -17,14 +18,15 @@ import com.medinasystems.pos.organization.domain.Country;
 import com.medinasystems.pos.organization.infrastructure.BranchRepository;
 import com.medinasystems.pos.organization.infrastructure.CompanyRepository;
 import com.medinasystems.pos.organization.infrastructure.CountryRepository;
-import com.medinasystems.pos.security.BranchAccess;
 import com.medinasystems.pos.shared.AuditEvent;
+import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
 /**
- * Branches. Every read and change is limited to the branches the current user can see;
- * a branch outside that set is reported as not found, so its existence is not revealed.
+ * Branches. Reads and changes are limited to the branches this node can see: the central node sees all
+ * of them, a store only its own. A branch outside that set is reported as not found, so its existence
+ * is not revealed.
  */
 @Service
 @Transactional
@@ -33,25 +35,28 @@ public class BranchService {
     private final BranchRepository branches;
     private final CountryRepository countries;
     private final CompanyRepository companies;
-    private final BranchAccess access;
+    private final BranchScope scope;
     private final ApplicationEventPublisher events;
 
     public BranchService(BranchRepository branches, CountryRepository countries, CompanyRepository companies,
-                         BranchAccess access, ApplicationEventPublisher events) {
+                         BranchScope scope, ApplicationEventPublisher events) {
         this.branches = branches;
         this.countries = countries;
         this.companies = companies;
-        this.access = access;
+        this.scope = scope;
         this.events = events;
     }
 
     @Transactional(readOnly = true)
     public Page<BranchView> list(Pageable pageable) {
-        Set<Long> visible = visibleIds();
-        if (visible.isEmpty()) {
+        if (scope.allBranches()) {
+            return branches.findAll(pageable).map(BranchView::from);
+        }
+        Optional<Long> nodeBranch = scope.nodeBranchId();
+        if (nodeBranch.isEmpty()) {
             return Page.empty(pageable);
         }
-        return branches.findByIdIn(visible, pageable).map(BranchView::from);
+        return branches.findByIdIn(Set.of(nodeBranch.get()), pageable).map(BranchView::from);
     }
 
     @Transactional(readOnly = true)
@@ -103,12 +108,8 @@ public class BranchService {
         }
     }
 
-    private Set<Long> visibleIds() {
-        return access.branchIdsOf(access.currentUserId());
-    }
-
     private Branch visible(Long id) {
-        if (!visibleIds().contains(id)) {
+        if (!scope.canSee(id)) {
             throw new ResourceNotFoundException("branch", id);
         }
         return branches.findById(id).orElseThrow(() -> new ResourceNotFoundException("branch", id));

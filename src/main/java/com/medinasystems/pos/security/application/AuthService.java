@@ -87,7 +87,7 @@ public class AuthService {
     public void changePassword(String username, String currentPassword, String newPassword) {
         AppUser user = users.findByUsername(username).orElseThrow(InvalidCredentialsException::new);
         if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
-            throw new InvalidCredentialsException();
+            throw new BusinessRuleException("INVALID_CURRENT_PASSWORD", "The current password is not correct");
         }
         if (newPassword.length() < MIN_PASSWORD_LENGTH) {
             throw new BusinessRuleException("password.too_short", "The password must have at least 10 characters");

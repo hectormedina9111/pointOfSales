@@ -90,7 +90,7 @@ public class SyncDataReader {
         return jdbc.query("""
                 SELECT entity, entity_id, MAX(version) AS v, (array_agg(operation ORDER BY version DESC))[1] AS op
                 FROM sync_change_log
-                WHERE version > ? AND """ + FINISHED_ROWS + """
+                WHERE version > ? AND \s""" + FINISHED_ROWS + """
 
                 GROUP BY entity, entity_id
                 ORDER BY v

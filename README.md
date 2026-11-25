@@ -128,12 +128,13 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 - MANAGER, CASHIER y WAREHOUSE_CLERK empiezan sin privilegios. Se configuran con `PUT /api/v1/roles/{id}/privileges` (`{"privilegeCodes": ["GET_USERS", ...]}`); el cambio aplica en la siguiente petición.
 - Los privilegios MENU y ACTION se mantienen con `/api/v1/privileges`. Los ENDPOINT solo se leen.
 - El frontend usa `GET /api/v1/me/menus` para armar el menú y `GET /api/v1/me/privileges` para mostrar u ocultar botones.
+- Menús de las pantallas del frontend, creados al arrancar la central por `MenuSeeder` (no con Flyway) y asignados a ADMIN: `MENU_ORGANIZATION` (`_COUNTRIES`, `_COMPANY`, `_BRANCHES`), `MENU_CATALOG` (`_PRODUCTS`, `_CATEGORIES`, `_UNITS`, `_TAXES`), `MENU_PRICING` (`_PRICE_LISTS`, `_PRICE_CHECK`), `MENU_STORES` (`_NODES`, `_SYNC_STATUS`) y `MENU_AUDIT`.
 - Las rutas públicas (`/api/v1/auth/**`, `/api/v1/system/**`) y las del propio usuario (`/api/v1/me/**`) no requieren privilegio.
 
 ### Organización y auditoría
 
 - Países, empresa y sucursales: `GET/POST/PUT /api/v1/countries`, `GET/PUT /api/v1/company` (404 hasta configurarla) y `GET/POST/PUT /api/v1/branches`.
-- Cada usuario solo ve las sucursales asignadas en `user_branch`. Una sucursal ajena responde 404. Crear una sucursal no da acceso a nadie: el administrador asigna las sucursales con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
+- La visibilidad de sucursales depende del nodo, no del usuario: la central ve todas las sucursales y cada tienda solo la que le asignó la central (`store_identity.branch_id`). Una sucursal que el nodo no ve responde 404. La tabla `user_branch` solo decide en qué tienda puede iniciar sesión cada usuario: el administrador asigna las tiendas con `GET/PUT /api/v1/users/{id}/branches` (`{"branchIds": [1, 2]}`).
 - En una tienda, los endpoints de escritura de datos maestros responden 403 con código `READ_ONLY_NODE`. Los cambios llegan a la tienda por sincronización.
 - Cada alta y cambio de datos maestros queda en `audit_log`, en la misma transacción. Se consulta con `GET /api/v1/audit-log?entity=&entityId=&from=&to=` (fechas ISO-8601 UTC, por ejemplo `2026-11-24T00:00:00Z`).
 
@@ -150,7 +151,7 @@ Los mensajes de error y los textos que ve el usuario salen en español por defec
 
 - Listas de precios: `GET/POST/PUT /api/v1/price-lists` (`/price-lists/{id}` para una), con filtros `countryId` y `active`. Una lista es `FIXED_PRICE` (precio por producto) o `PERCENT_OFF_BASE` (descuento sobre el precio base, con `percent` de 0 a 100).
 - Escalas de mayoreo (solo en listas `FIXED_PRICE`): `GET/POST/PUT/DELETE /api/v1/price-lists/{id}/items` (filtro `productId`). Cada escala empieza en `minQuantity` (1 por defecto) y no se repite para el mismo producto.
-- Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe estar asignada al usuario. Sin `date`, el día es hoy en la zona horaria del país (Honduras: UTC-6). La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId`.
+- Precio resuelto: `GET /api/v1/products/{id}/price?priceListId=&branchId=&quantity=1&date=YYYY-MM-DD`. Sin `priceListId` se usa la lista por defecto de la sucursal, que debe ser visible desde el nodo. Sin `date`, el día es hoy en la zona horaria del país (Honduras: UTC-6). La respuesta trae el precio, la base gravable y el impuesto, además de `source` (`PRICE_LIST` o `BASE_PRICE`) y `priceListId`.
 - Lista por defecto de cada sucursal: `defaultPriceListId` en `PUT /api/v1/branches/{id}`.
 
 ### Tiendas y activación
@@ -165,6 +166,8 @@ Cada tienda tiene su propio servidor y se activa ante la central una sola vez. L
 2. Genera el código de activación: `POST /api/v1/store-nodes/{id}/activation-code`. Se muestra una sola vez y vence en 24 horas.
 3. En el servidor de la tienda, configura el perfil `store`, la base de datos y `POS_NODE_NUMBER` (el número que asignó la central; si no coincide, la tienda no guarda su identidad), `POS_CENTRAL_URL` y `POS_ACTIVATION_CODE`.
 4. Arranca la tienda. Si la central no responde, reintenta cada 10 segundos durante unos 5 minutos. Si el código venció o fue rechazado, el log lo indica y hay que generar otro.
+
+**Asignar o cambiar la sucursal de una tienda.** Desde la central, con `PUT /api/v1/store-nodes/{id}/branch` y el cuerpo `{"branchId": <id de la sucursal>}`. Para quitarla, envía `{"branchId": null}`. La tienda recibe el cambio en su siguiente latido, en unos 30 segundos. A partir de ese momento, la tienda atiende a los usuarios de esa sucursal. Una sucursal pertenece a una sola tienda, y una tienda revocada no se reasigna. Las tiendas de desarrollo se registran solas antes de que exista ninguna sucursal, por eso necesitan esta asignación.
 
 **Revocar una tienda.** `POST /api/v1/store-nodes/{id}/revoke` deja de aceptar su token de inmediato y libera su sucursal. Una tienda revocada no vuelve a activarse.
 
