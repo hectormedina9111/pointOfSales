@@ -26,6 +26,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - **Un módulo nunca accede a las tablas ni a las clases internas de otro.** Usa su servicio público o escucha sus eventos.
 - La prueba de Spring Modulith debe pasar siempre; si falla, se corrige el diseño, no la prueba.
 - Las reglas de negocio viven en `domain`, no en controladores ni repositorios.
+- Eventos entre módulos: los listeners síncronos (`@EventListener`) corren en la misma transacción. Si se agrega un listener asíncrono o después del commit (`@ApplicationModuleListener`, `@TransactionalEventListener`, `@Async`), es obligatorio activar antes el registro de eventos de Spring Modulith (`spring-modulith-starter-jpa`, tabla `event_publication` creada con Flyway) para no perder eventos.
 
 ## Central y tienda
 

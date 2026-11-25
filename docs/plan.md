@@ -1643,3 +1643,7 @@ Alcance: datos iniciales, fecha de negocio, orden de confirmación y purga del r
 - Un rechazo deja la contraseña de la tienda distinta de la de la central, hasta el siguiente cambio de ese usuario en la central. No se revierte la tienda: es raro (el usuario inició sesión en esa tienda, así que está asignado a su sucursal) y pide decidir la política de reconciliación.
 - Las fechas de la tienda y de la central se comparan tal cual. Un reloj de tienda adelantado puede ganar a un cambio posterior hecha en la central. Con NTP en ambos nodos la diferencia es de segundos.
 - Esta cola es la base de las subidas futuras (por ejemplo, las ventas): mismo `sync_outbox`, mismo endpoint `/sync/uploads` con un `eventType` nuevo, y el mismo recibo para no duplicar.
+
+### Decisión: eventos asíncronos
+
+Decisión del 24 de noviembre de 2026: hoy todos los listeners son síncronos y corren en la misma transacción (auditoría y cola de envíos de la tienda), por eso no se usa el registro de eventos de Spring Modulith. Cuando se agregue el primer listener asíncrono o posterior al commit, se activa antes `spring-modulith-starter-jpa` con su tabla `event_publication` (migración Flyway), para que ningún evento se pierda si el servidor se cae, y se reintenten al arrancar.
