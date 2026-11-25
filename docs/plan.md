@@ -1305,9 +1305,9 @@ Siguiente MVP, decidido el 24 de noviembre de 2026, después de terminar el MVP 
 | Tema | Supuesto |
 | --- | --- |
 | Vendedor | En 3A una misma persona arma la venta y la cobra (cajero). Un rol "Vendedor" se puede crear desde Roles con menos privilegios; el flujo "vendedor arma, cajero cobra" queda para después |
-| Autorización del jefe de tienda | Se pide su usuario y contraseña (o los de alguien con el privilegio) para: descuento mayor al máximo permitido y retiro de efectivo de la caja |
+| Autorización del jefe de tienda | Se pide su usuario y contraseña (o los de alguien con el privilegio) para: descuento mayor al máximo permitido, cambio de precio de una línea y retiro de efectivo de la caja |
 | Métodos de pago | Efectivo (con vuelto), tarjeta (referencia y últimos 4 dígitos) y transferencia (referencia). Crédito al cliente y saldo a favor, después |
-| Cliente | Consumidor final; el módulo de clientes llega después |
+| Cliente | Se elige en la orden; por defecto Consumidor final. El módulo de clientes se adelanta al 3A (decisión del 25 de noviembre de 2026, ver "Orden y cobro") |
 | Documento | Ticket con número interno por caja; sin CAI hasta 3C. Las ventas quedan con `fiscal_status = NOT_REQUIRED` |
 | Existencias | No se valida existencia (el inventario llega después); los productos con seriales se venden sin capturar el serial hasta el módulo de inventario |
 
@@ -1333,18 +1333,40 @@ Siguiente MVP, decidido el 24 de noviembre de 2026, después de terminar el MVP 
 - **Consulta:** listado de ventas y sesiones en la tienda (las suyas) y en la central (todas, con su tienda).
 - **Subida a la central:** sesiones y ventas pagadas suben automáticamente; el panel de tiendas muestra los envíos pendientes.
 
-**Fuera del 3A:** anulaciones y devoluciones (3B), CAI y numeración fiscal (3C), clientes y crédito, inventario y seriales, reportes.
+**Fuera del 3A:** anulaciones y devoluciones (3B), CAI y numeración fiscal (3C), crédito y cuentas por cobrar, inventario y seriales, reportes.
+
+### Orden y cobro (decisión del 25 de noviembre de 2026)
+
+Después de probar el punto de venta, el responsable pidió separar la orden del cobro y adelantar los clientes:
+
+- **Orden por pasos:** Cliente → Tipo de orden → Productos → Resumen. Cada paso es un componente aparte.
+  - **Cliente:** búsqueda por nombre, documento o código del ERP; por defecto Consumidor final; alta rápida de un cliente nuevo.
+  - **Tipo de orden:** Contado o Crédito. En el 3A solo Contado: Crédito se muestra deshabilitado y el backend lo rechaza con `CREDIT_NOT_AVAILABLE` hasta el módulo de crédito (fase 7). El tipo se guarda en la venta (`order_type`).
+  - **Productos:** búsqueda y lector de código de barras, cantidades, descuento por línea y **cambio de precio** de la línea.
+  - **Resumen:** descuento a la venta, base, ISV y total; **Guardar** guarda la orden en el servidor (venta en estado `ON_HOLD`) y abre el cobro.
+- **Autorizaciones al guardar la orden:** el descuento mayor al máximo y el cambio de precio se validan al guardar la orden, no al cobrar. El cambio de precio pide el privilegio `ACTION_SALE_PRICE_OVERRIDE` o el usuario y la contraseña de alguien que lo tenga. La línea guarda el precio de lista original (`list_price`) y si se cambió.
+- **Cobro en vista aparte** (`/sales/checkout/:id`): la orden se muestra solo para lectura. Los pagos se agregan con un formulario; un pago agregado no se edita, solo se elimina. Para corregir la orden hay que volver a ella. El cobro usa los precios guardados en la orden y la clave de idempotencia.
+- **Órdenes sin cobrar:** quedan en Ventas en espera; desde ahí se retoman para editar o cobrar.
+
+### Clientes en el 3A
+
+- Tabla `customer` del modelo de datos, con Consumidor final sembrado por migración en todos los nodos.
+- **Central:** alta, edición y desactivación; pantalla de clientes con asistente por pasos.
+- **Tienda:** consulta y alta (excepción a la regla de solo lectura, como el cambio de contraseña). El cliente nuevo se guarda con un id del rango de la tienda, sube a la central por `sync_outbox` (evento `CUSTOMER_CREATED`) y la central lo replica a todas las tiendas. La edición y la desactivación son solo de la central.
+- **Documento no único en la base de datos:** dos tiendas sin conexión pueden registrar a la misma persona y la central debe aceptar los dos registros. Cada nodo rechaza el alta si ya conoce ese documento (`DUPLICATE_CUSTOMER_DOCUMENT`); la detección de duplicados entre tiendas queda para la central más adelante. `external_code` sí es único.
+- **Precio:** se resuelve con la lista del cliente, luego la de la sucursal y luego `product.sale_price`.
+- Una venta de la tienda que llega a la central antes que su cliente se reintenta, como cuando llega antes que su sesión.
 
 ### Formularios con pasos (regla de la interfaz)
 
-Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con varios pasos se hacen como **asistente por pasos** (stepper), para guiar al usuario. En cada paso se marcan los campos obligatorios con `*`, y el asistente no deja avanzar hasta que esos campos son válidos; el último paso muestra un resumen antes de guardar. En el 3A usan pasos: abrir caja, cobro (revisar → pagos → confirmar e imprimir) y cierre de caja (contar → revisar diferencias → confirmar). El formulario de producto, que ya tiene muchos campos, se pasa también a pasos.
+Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con varios pasos se hacen como **asistente por pasos** (stepper), para guiar al usuario. En cada paso se marcan los campos obligatorios con `*`, y el asistente no deja avanzar hasta que esos campos son válidos; el último paso muestra un resumen antes de guardar. En el 3A usan pasos: abrir caja, la orden de venta (cliente → tipo → productos → resumen), el cliente y cierre de caja (contar → revisar diferencias → confirmar). El formulario de producto, que ya tiene muchos campos, se pasa también a pasos.
 
 ### Roles y privilegios iniciales
 
 | Rol | Puede |
 | --- | --- |
-| Cajero (CASHIER) | Abrir y cerrar su caja, vender, poner en espera, cobrar, imprimir, depósitos, ver sus ventas |
-| Jefe de tienda (MANAGER) | Lo del cajero, autorizar descuentos mayores y retiros, ver todas las sesiones y ventas de la tienda |
+| Cajero (CASHIER) | Abrir y cerrar su caja, vender, poner en espera, cobrar, imprimir, depósitos, ver sus ventas, buscar y crear clientes |
+| Jefe de tienda (MANAGER) | Lo del cajero, autorizar descuentos mayores, cambios de precio y retiros, ver todas las sesiones y ventas de la tienda |
 | Administrador (ADMIN) | Todo, incluidas cajas y métodos de pago en la central |
 
 ### Orden de trabajo del 3A
@@ -1358,6 +1380,10 @@ Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con v
 7. **Frontend: punto de venta** (pantalla de venta, cobro por pasos, ticket, ventas en espera). (hecho)
 8. **Frontend: consulta de ventas y sesiones** en tienda y central. (hecho)
 9. **Cierre:** README, colección de Hoppscotch y revisión de criterios. (hecho)
+10. **Backend: clientes** (central y alta en la tienda, subida y réplica, precio por lista del cliente).
+11. **Backend: orden y cobro separados** (cliente y tipo de orden en la venta, cambio de precio con autorización, edición de la orden, cobro de una orden guardada).
+12. **Frontend: clientes** (listado y asistente por pasos).
+13. **Frontend: orden por pasos y cobro en vista aparte.**
 
 ### Criterios de aceptación del 3A
 
@@ -1372,6 +1398,10 @@ Decisión del 24 de noviembre de 2026: los formularios con muchos campos o con v
 - [ ] El cierre de caja muestra esperado, contado y diferencia por método de pago.
 - [ ] Con la tienda 1 sin internet se sigue vendiendo; al volver, las ventas suben y aparecen en la central.
 - [ ] Los formularios de pasos marcan los obligatorios y no dejan avanzar sin ellos.
+- [ ] Un cliente creado en la tienda 1 llega a la central y a la tienda 2.
+- [ ] La orden se arma por pasos (cliente, tipo, productos, resumen); Crédito aparece deshabilitado.
+- [ ] Un cambio de precio sin el privilegio pide autorización del jefe de tienda.
+- [ ] En el cobro la orden no se puede modificar y un pago agregado solo se puede eliminar.
 
 ### Estado del 3A (25 de noviembre de 2026)
 
