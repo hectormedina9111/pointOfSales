@@ -1,6 +1,11 @@
 package com.medinasystems.pos.inventory.application;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.data.domain.Page;
@@ -8,9 +13,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.medinasystems.pos.catalog.SaleableProduct;
 import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.inventory.StockMovementType;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
+import com.medinasystems.pos.inventory.domain.InventoryItem;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentSpecifications;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
@@ -18,8 +25,10 @@ import com.medinasystems.pos.inventory.infrastructure.InventoryItemSpecification
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryMovementSpecifications;
 import com.medinasystems.pos.organization.BranchDirectory;
+import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.security.UserDirectory;
 import com.medinasystems.pos.shared.BranchScope;
+import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
 
 /**
@@ -33,6 +42,8 @@ public class InventoryQueryService {
     private static final Set<String> STOCK_SORT = Set.of("productName", "productSku", "quantity", "lastMovementAt");
     private static final Set<String> MOVEMENT_SORT = Set.of("movedAt", "id", "quantity");
     private static final Set<String> DOCUMENT_SORT = Set.of("postedAt", "number", "id");
+    /** Largest number of products one availability request may ask for. */
+    static final int MAX_AVAILABILITY_PRODUCTS = 100;
 
     private final InventoryItemRepository items;
     private final InventoryMovementRepository movements;
@@ -79,6 +90,57 @@ public class InventoryQueryService {
         return items.findByProductIdAndBranchId(productId, branchId)
                 .map(item -> InventoryItemView.of(item, names))
                 .orElseThrow(() -> new ResourceNotFoundException("inventory item", productId));
+    }
+
+    /**
+     * The stock a sale can use for each product, in the node's branch (a store) or in {@code branchId} (the central node,
+     * which requires it). Answers at most {@value #MAX_AVAILABILITY_PRODUCTS} products; an unknown product answers 404.
+     */
+    public List<ProductAvailabilityView> availability(List<Long> productIds, Long branchId) {
+        if (productIds.size() > MAX_AVAILABILITY_PRODUCTS) {
+            throw new BusinessRuleException("AVAILABILITY_TOO_MANY_PRODUCTS",
+                    "A request may ask for at most " + MAX_AVAILABILITY_PRODUCTS + " products", MAX_AVAILABILITY_PRODUCTS);
+        }
+        List<Long> ids = productIds.stream().distinct().toList();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        long branch = availabilityBranch(branchId);
+        BranchInfo info = branchDirectory.info(branch)
+                .orElseThrow(() -> new ResourceNotFoundException("branch", branch));
+        Map<Long, InventoryItem> stock = new HashMap<>();
+        for (InventoryItem item : items.findByBranchIdAndProductIdIn(branch, ids)) {
+            stock.put(item.getProductId(), item);
+        }
+        List<ProductAvailabilityView> result = new ArrayList<>();
+        for (long productId : ids) {
+            SaleableProduct product = products.find(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("product", productId));
+            boolean tracks = product.tracksInventory() && !"SERVICE".equals(product.productType());
+            InventoryItem item = stock.get(productId);
+            BigDecimal quantity = tracks && item != null ? item.getQuantity() : BigDecimal.ZERO;
+            result.add(new ProductAvailabilityView(productId, tracks, quantity, info.allowNegativeStock()));
+        }
+        return result;
+    }
+
+    /**
+     * The branch an availability request reads. A store reads its own branch and answers 404 for another one; the central
+     * node needs the branch named.
+     */
+    private long availabilityBranch(Long requested) {
+        if (scope.allBranches()) {
+            if (requested == null) {
+                throw new BusinessRuleException("INVENTORY_BRANCH_REQUIRED", "Choose the branch of the document");
+            }
+            return requested;
+        }
+        long own = scope.nodeBranchId().orElseThrow(() -> new BusinessRuleException("INVENTORY_BRANCH_NOT_OPERATED",
+                "This node does not operate the inventory of the branch"));
+        if (requested != null && requested != own) {
+            throw new ResourceNotFoundException("branch", requested);
+        }
+        return own;
     }
 
     /** The movements of the visible branches, between {@code from} and {@code to} when set. */

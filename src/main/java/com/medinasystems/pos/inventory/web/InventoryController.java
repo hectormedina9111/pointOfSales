@@ -1,6 +1,7 @@
 package com.medinasystems.pos.inventory.web;
 
 import java.time.Instant;
+import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.medinasystems.pos.inventory.StockMovementType;
 import com.medinasystems.pos.inventory.application.InventoryItemView;
 import com.medinasystems.pos.inventory.application.InventoryQueryService;
+import com.medinasystems.pos.inventory.application.ProductAvailabilityView;
 import com.medinasystems.pos.inventory.application.StockMovementView;
 import com.medinasystems.pos.shared.web.PageResponse;
 
@@ -42,6 +44,17 @@ public class InventoryController {
                                                  @RequestParam(required = false) Boolean belowMin,
                                                  @PageableDefault(sort = {"productName", "id"}) Pageable pageable) {
         return PageResponse.from(queries.stock(branchId, search, categoryId, belowMin, pageable));
+    }
+
+    /**
+     * The stock a sale can use for each product. A store answers for its own branch; the central node needs
+     * {@code branchId}. At most 100 products. A service or a product that does not track stock has {@code tracksInventory}
+     * false.
+     */
+    @GetMapping("/availability")
+    public List<ProductAvailabilityView> availability(@RequestParam List<Long> productIds,
+                                                      @RequestParam(required = false) Long branchId) {
+        return queries.availability(productIds, branchId);
     }
 
     @GetMapping("/{productId}/branches/{branchId}")
