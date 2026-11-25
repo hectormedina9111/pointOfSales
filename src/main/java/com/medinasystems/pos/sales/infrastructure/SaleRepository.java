@@ -27,6 +27,9 @@ public interface SaleRepository extends JpaRepository<Sale, Long>, JpaSpecificat
     /** One hold of one register. Empty when the sale is not a hold of that register. */
     Optional<Sale> findByIdAndStatusAndCashRegisterId(Long id, SaleStatus status, Long cashRegisterId);
 
+    /** The sale with this receipt number and type. Receipts of returns carry their own suffix, so they never match a sale. */
+    Optional<Sale> findByReceiptNumberAndType(String receiptNumber, SaleType type);
+
     /** The documents of one type that point to a sale, such as its returns. */
     List<Sale> findByOriginalSaleIdAndType(Long originalSaleId, SaleType type);
 

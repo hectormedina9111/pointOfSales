@@ -12,13 +12,14 @@ import java.util.Set;
 import com.medinasystems.pos.shared.BusinessRuleException;
 
 /**
- * Computes what a return refunds. It is pure: it receives the original sale, the lines and quantities asked for, and the
- * amounts refunded before for each original line.
+ * Computes what a return refunds. It is pure: it receives the lines of the original sale (their quantities, totals and
+ * the quantity each one can still take), the lines and quantities asked for, and the amounts refunded before for each
+ * original line. The original sale may be of this node or of another branch.
  *
  * <p>For a returned quantity {@code q} of a line with quantity {@code Q} and net total {@code N} (after the line discount
  * and its share of the sale discount, tax included): {@code amount = round(N * q / Q)}, half up. When {@code q} is all
- * that is left of the line, {@code amount = N - refunded before}, so returning everything refunds exactly what was paid.
- * The tax is split backwards from that amount with the rate of the original line.
+ * the ledger has left of the line ({@code Q - returned}), {@code amount = N - refunded before}, so returning everything
+ * refunds exactly what was paid. The tax is split backwards from that amount with the rate of the original line.
  */
 public final class ReturnCalculator {
 
@@ -29,23 +30,24 @@ public final class ReturnCalculator {
     }
 
     /**
-     * @param original       the sale being returned, with its lines and the quantities already returned
-     * @param requested      the lines and quantities asked for; at least one, each original line once
+     * @param returnable    true when the original sale is a paid sale or partly returned
+     * @param source        the lines of the original sale
+     * @param requested     the lines and quantities asked for; at least one, each original line once
      * @param refundedByLine the amount already refunded per original line id, by earlier returns
      * @throws BusinessRuleException RETURN_NOT_ALLOWED, RETURN_LINES_REQUIRED, DUPLICATE_RETURN_LINE,
      *                               RETURN_LINE_NOT_FOUND, INVALID_QUANTITY, RETURN_QUANTITY_EXCEEDED or RETURN_TOTAL_ZERO
      */
-    public static ReturnTotals calculate(Sale original, List<ReturnLineRequest> requested,
-                                         Map<Long, BigDecimal> refundedByLine) {
-        if (!original.isReturnable()) {
+    public static ReturnTotals calculate(boolean returnable, List<ReturnSourceLine> source,
+                                         List<ReturnLineRequest> requested, Map<Long, BigDecimal> refundedByLine) {
+        if (!returnable) {
             throw new BusinessRuleException("RETURN_NOT_ALLOWED", "Only a paid sale can be returned");
         }
         if (requested == null || requested.isEmpty()) {
             throw new BusinessRuleException("RETURN_LINES_REQUIRED", "The return needs at least one line");
         }
-        Map<Long, SaleLine> lines = new HashMap<>();
-        for (SaleLine line : original.getLines()) {
-            lines.put(line.getId(), line);
+        Map<Long, ReturnSourceLine> lines = new HashMap<>();
+        for (ReturnSourceLine line : source) {
+            lines.put(line.id(), line);
         }
 
         Set<Long> seen = new HashSet<>();
@@ -54,7 +56,7 @@ public final class ReturnCalculator {
             if (!seen.add(request.saleLineId())) {
                 throw new BusinessRuleException("DUPLICATE_RETURN_LINE", "A line is returned twice");
             }
-            SaleLine line = lines.get(request.saleLineId());
+            ReturnSourceLine line = lines.get(request.saleLineId());
             if (line == null) {
                 throw new BusinessRuleException("RETURN_LINE_NOT_FOUND", "The line is not part of the sale");
             }
@@ -65,25 +67,23 @@ public final class ReturnCalculator {
             if (quantity.signum() <= 0) {
                 throw new BusinessRuleException("INVALID_QUANTITY", "The quantity must be greater than zero");
             }
-            BigDecimal remaining = line.getQuantity().subtract(line.getReturnedQuantity());
-            if (quantity.compareTo(remaining) > 0) {
+            if (quantity.compareTo(line.returnableQuantity()) > 0) {
                 throw new BusinessRuleException("RETURN_QUANTITY_EXCEEDED",
                         "The quantity is more than the quantity left to return");
             }
-            BigDecimal refunded = refundedByLine.getOrDefault(line.getId(), Money.ZERO);
-            BigDecimal amount = amountOf(line, quantity, remaining, refunded);
-            TaxSplit split = TaxSplit.of(amount, line.getTaxRate());
+            BigDecimal refunded = refundedByLine.getOrDefault(line.id(), Money.ZERO);
+            BigDecimal amount = amountOf(line, quantity, refunded);
+            TaxSplit split = TaxSplit.of(amount, line.taxRate());
             calculated.add(new CalculatedReturnLine(line, quantity, split.taxableBase(), split.taxAmount(), amount));
         }
         return totalsOf(calculated);
     }
 
-    private static BigDecimal amountOf(SaleLine line, BigDecimal quantity, BigDecimal remaining,
-                                       BigDecimal refunded) {
-        if (quantity.compareTo(remaining) == 0) {
-            return Money.scale2(line.getTotal().subtract(refunded));
+    private static BigDecimal amountOf(ReturnSourceLine line, BigDecimal quantity, BigDecimal refunded) {
+        if (quantity.compareTo(line.ledgerRemaining()) == 0) {
+            return Money.scale2(line.total().subtract(refunded));
         }
-        return line.getTotal().multiply(quantity).divide(line.getQuantity(), 2, RoundingMode.HALF_UP);
+        return line.total().multiply(quantity).divide(line.quantity(), 2, RoundingMode.HALF_UP);
     }
 
     private static ReturnTotals totalsOf(List<CalculatedReturnLine> lines) {
@@ -95,7 +95,7 @@ public final class ReturnCalculator {
         BigDecimal taxTotal = Money.ZERO;
         BigDecimal total = Money.ZERO;
         for (CalculatedReturnLine line : lines) {
-            BigDecimal rate = line.original().getTaxRate();
+            BigDecimal rate = line.original().taxRate();
             subtotal = subtotal.add(line.subtotal());
             taxTotal = taxTotal.add(line.taxAmount());
             total = total.add(line.total());

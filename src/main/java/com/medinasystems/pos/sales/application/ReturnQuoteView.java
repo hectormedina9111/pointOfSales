@@ -14,7 +14,7 @@ public record ReturnQuoteView(BigDecimal total, BigDecimal taxTotal, List<Line> 
 
     public static ReturnQuoteView from(ReturnTotals totals) {
         return new ReturnQuoteView(totals.total(), totals.taxTotal(), totals.lines().stream()
-                .map(line -> new Line(line.original().getId(), line.quantity(), line.total(), line.taxAmount()))
+                .map(line -> new Line(line.original().id(), line.quantity(), line.total(), line.taxAmount()))
                 .toList());
     }
 }

@@ -3,13 +3,13 @@ package com.medinasystems.pos.sales.application;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.medinasystems.pos.cash.OpenSessionInfo;
 import com.medinasystems.pos.customer.CustomerInfo;
+import com.medinasystems.pos.organization.BranchDirectory;
+import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.organization.CompanyDirectory;
 import com.medinasystems.pos.organization.CompanyInfo;
 import com.medinasystems.pos.sales.domain.CreditNote;
@@ -26,12 +28,15 @@ import com.medinasystems.pos.sales.domain.RefundMethod;
 import com.medinasystems.pos.sales.domain.RefundRules;
 import com.medinasystems.pos.sales.domain.ReceiptCounter;
 import com.medinasystems.pos.sales.domain.ReturnCalculator;
+import com.medinasystems.pos.sales.domain.ReturnClaimStatus;
 import com.medinasystems.pos.sales.domain.ReturnLineRequest;
+import com.medinasystems.pos.sales.domain.ReturnSourceLine;
 import com.medinasystems.pos.sales.domain.ReturnTotals;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.sales.domain.SaleType;
 import com.medinasystems.pos.sales.infrastructure.CreditNoteRepository;
 import com.medinasystems.pos.sales.infrastructure.PaymentRepository;
+import com.medinasystems.pos.sales.infrastructure.SaleReturnClaimRepository;
 import com.medinasystems.pos.sales.infrastructure.SaleLineRepository;
 import com.medinasystems.pos.sales.infrastructure.SaleRepository;
 import com.medinasystems.pos.security.ActionAuthorizer;
@@ -61,22 +66,30 @@ public class SaleReturnService {
     private final PaymentRepository payments;
     private final CreditNoteRepository creditNotes;
     private final CompanyDirectory companies;
+    private final BranchDirectory branches;
+    private final SaleReturnClaimRepository claims;
     private final ActionAuthorizer authorizer;
     private final BranchScope scope;
     private final Outbox outbox;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
+    /** Claim states that hold a quantity: a held quantity is not returnable by another return. */
+    private static final Set<ReturnClaimStatus> HOLDING = Set.of(ReturnClaimStatus.RESERVED,
+            ReturnClaimStatus.CONFIRMED);
+
     public SaleReturnService(SaleService service, SaleRepository sales, SaleLineRepository lines,
                              PaymentRepository payments, CreditNoteRepository creditNotes, CompanyDirectory companies,
-                             ActionAuthorizer authorizer, BranchScope scope, Outbox outbox,
-                             ApplicationEventPublisher events, Clock clock) {
+                             BranchDirectory branches, SaleReturnClaimRepository claims, ActionAuthorizer authorizer,
+                             BranchScope scope, Outbox outbox, ApplicationEventPublisher events, Clock clock) {
         this.service = service;
         this.sales = sales;
         this.lines = lines;
         this.payments = payments;
         this.creditNotes = creditNotes;
         this.companies = companies;
+        this.branches = branches;
+        this.claims = claims;
         this.authorizer = authorizer;
         this.scope = scope;
         this.outbox = outbox;
@@ -91,42 +104,17 @@ public class SaleReturnService {
         if (!sale.isReturnable()) {
             throw new BusinessRuleException("RETURN_NOT_ALLOWED", "Only a paid sale can be returned");
         }
-        boolean sameDay = sameDay(sale, zone());
-        Map<Long, BigDecimal> refundedByLine = refundedByLine(sale.getId());
-        Map<String, BigDecimal> refundedByMethod = refundedByMethod(sale.getId());
-
-        Map<String, BigDecimal> paid = new LinkedHashMap<>();
-        Map<String, String> names = new HashMap<>();
-        for (Payment payment : sale.getPayments()) {
-            String code = payment.getPaymentMethod().getCode();
-            paid.merge(code, payment.getAmount(), BigDecimal::add);
-            names.putIfAbsent(code, payment.getPaymentMethod().getName());
-        }
-        List<ReturnableView.PaymentRefund> methods = new ArrayList<>();
-        for (Map.Entry<String, BigDecimal> entry : paid.entrySet()) {
-            BigDecimal refunded = refundedByMethod.getOrDefault(entry.getKey(), BigDecimal.ZERO);
-            methods.add(new ReturnableView.PaymentRefund(entry.getKey(), names.get(entry.getKey()), entry.getValue(),
-                    refunded, entry.getValue().subtract(refunded)));
-        }
-        List<ReturnableView.Line> lineViews = sale.getLines().stream()
-                .map(line -> new ReturnableView.Line(line.getId(), line.getProductId(), line.getDescription(),
-                        line.getQuantity(), line.getReturnedQuantity(),
-                        line.getQuantity().subtract(line.getReturnedQuantity()), line.getTotal(),
-                        refundedByLine.getOrDefault(line.getId(), BigDecimal.ZERO)))
-                .toList();
         CustomerInfo customer = service.findCustomer(sale.getCustomerId());
-        List<RefundMethod> allowed = sameDay
-                ? List.of(RefundMethod.CASH, RefundMethod.ORIGINAL_METHOD)
-                : List.of(RefundMethod.CREDIT_NOTE);
-        return new ReturnableView(sale.getId(), sale.getReceiptNumber(), sale.getCustomerId(), customer.displayName(),
-                sale.getPaidAt(), sameDay, allowed, methods, lineViews);
+        return ReturnableView.of(sale, sameDay(sale, zone()), customer.displayName(), branchName(sale.getBranchId()),
+                false, refundedByLine(sale.getId()), refundedByMethod(sale.getId()), held(sale.getId()));
     }
 
     /** The amounts a return of these lines would refund. Nothing is stored and no authorization is needed. */
     @Transactional(readOnly = true)
     public ReturnQuoteView quote(long saleId, List<SaleData.ReturnLine> requested) {
         Sale sale = ownSale(service.findVisible(saleId));
-        ReturnTotals totals = ReturnCalculator.calculate(sale, requests(requested), refundedByLine(sale.getId()));
+        ReturnTotals totals = ReturnCalculator.calculate(sale.isReturnable(), sourceLines(sale), requests(requested),
+                refundedByLine(sale.getId()));
         return ReturnQuoteView.from(totals);
     }
 
@@ -152,7 +140,8 @@ public class SaleReturnService {
         OpenSessionInfo session = service.currentSession(userId);
         ReceiptCounter counter = service.lockCounter(session.cashRegisterId(), ReceiptCounter.RETURN);
         boolean sameDay = sameDay(sale, zone());
-        ReturnTotals totals = ReturnCalculator.calculate(sale, requests(data.lines()), refundedByLine(sale.getId()));
+        ReturnTotals totals = ReturnCalculator.calculate(sale.isReturnable(), sourceLines(sale),
+                requests(data.lines()), refundedByLine(sale.getId()));
         List<PaymentDraft> refunds = service.paymentDrafts(data.refunds());
         RefundMethod method = RefundRules.check(totals.total(), sameDay, refunds, paidByMethod(sale),
                 refundedByMethod(sale.getId()));
@@ -186,7 +175,7 @@ public class SaleReturnService {
 
     private static Map<Long, BigDecimal> returnedByLine(ReturnTotals totals) {
         Map<Long, BigDecimal> returned = new HashMap<>();
-        totals.lines().forEach(line -> returned.put(line.original().getId(), line.quantity()));
+        totals.lines().forEach(line -> returned.put(line.original().id(), line.quantity()));
         return returned;
     }
 
@@ -196,6 +185,28 @@ public class SaleReturnService {
             throw new BusinessRuleException("FOREIGN_SALE_RETURN", "This sale belongs to another branch");
         }
         return sale;
+    }
+
+    /** The lines of a sale of this node, with the quantity that other claims hold on each. */
+    private List<ReturnSourceLine> sourceLines(Sale sale) {
+        Map<Long, BigDecimal> held = held(sale.getId());
+        return sale.getLines().stream()
+                .map(line -> ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO)))
+                .toList();
+    }
+
+    /** The quantity held per line of a sale by claims whose return is not in this node's documents. */
+    private Map<Long, BigDecimal> held(long saleId) {
+        Map<Long, BigDecimal> held = new HashMap<>();
+        for (Object[] row : claims.sumHeldByLine(saleId, HOLDING, SaleType.RETURN)) {
+            held.put((Long) row[0], (BigDecimal) row[1]);
+        }
+        return held;
+    }
+
+    /** The name of a branch for the screens, or null when the branch is unknown. */
+    private String branchName(Long branchId) {
+        return branches.info(branchId).map(BranchInfo::name).orElse(null);
     }
 
     private ZoneId zone() {
@@ -211,19 +222,11 @@ public class SaleReturnService {
     }
 
     private Map<Long, BigDecimal> refundedByLine(long saleId) {
-        Map<Long, BigDecimal> refunded = new HashMap<>();
-        for (Object[] row : lines.sumTotalsByOriginalLine(saleId, SaleType.RETURN)) {
-            refunded.put((Long) row[0], (BigDecimal) row[1]);
-        }
-        return refunded;
+        return ReturnRefunds.byLine(lines, saleId);
     }
 
     private Map<String, BigDecimal> refundedByMethod(long saleId) {
-        Map<String, BigDecimal> refunded = new HashMap<>();
-        for (Object[] row : payments.sumByMethodOfReturns(saleId, SaleType.RETURN)) {
-            refunded.put((String) row[0], (BigDecimal) row[1]);
-        }
-        return refunded;
+        return ReturnRefunds.byMethod(payments, saleId);
     }
 
     private static Map<String, BigDecimal> paidByMethod(Sale sale) {
