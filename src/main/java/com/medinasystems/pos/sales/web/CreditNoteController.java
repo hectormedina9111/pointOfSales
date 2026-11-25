@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.medinasystems.pos.sales.application.CentralCreditNotes;
 import com.medinasystems.pos.sales.application.CreditNoteBalanceView;
 import com.medinasystems.pos.sales.application.CreditNoteFilter;
+import com.medinasystems.pos.sales.application.CreditNoteRedemptionService;
+import com.medinasystems.pos.sales.application.CreditNoteRedemptionView;
 import com.medinasystems.pos.sales.application.CreditNoteService;
 import com.medinasystems.pos.sales.application.CreditNoteView;
 import com.medinasystems.pos.sales.domain.CreditNoteStatus;
+import com.medinasystems.pos.shared.CentralOnly;
 import com.medinasystems.pos.shared.StoreOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
 
@@ -27,10 +30,13 @@ public class CreditNoteController {
 
     private final CreditNoteService notes;
     private final CentralCreditNotes centralCredits;
+    private final CreditNoteRedemptionService redemptions;
 
-    public CreditNoteController(CreditNoteService notes, CentralCreditNotes centralCredits) {
+    public CreditNoteController(CreditNoteService notes, CentralCreditNotes centralCredits,
+                                CreditNoteRedemptionService redemptions) {
         this.notes = notes;
         this.centralCredits = centralCredits;
+        this.redemptions = redemptions;
     }
 
     /** Notes newest first. {@code search} matches the number; {@code from} and {@code to} bound the issue time. */
@@ -60,5 +66,15 @@ public class CreditNoteController {
     @GetMapping("/{id}")
     public CreditNoteView get(@PathVariable Long id) {
         return notes.get(id);
+    }
+
+    /** The redemptions of a note on the central node, newest first: who took the balance and whether a sale used it. */
+    @GetMapping("/{id}/redemptions")
+    @CentralOnly
+    public PageResponse<CreditNoteRedemptionView> redemptions(@PathVariable Long id,
+                                                               @PageableDefault(sort = {"createdAt", "id"},
+                                                                       direction = Sort.Direction.DESC)
+                                                               Pageable pageable) {
+        return PageResponse.from(redemptions.redemptions(id, pageable));
     }
 }
