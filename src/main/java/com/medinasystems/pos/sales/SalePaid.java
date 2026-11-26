@@ -21,7 +21,7 @@ public record SalePaid(long saleId, long branchId, long userId, List<Line> lines
      * @param saleLineId the id of the line
      * @param productId  the product sold
      * @param quantity      the quantity sold, positive
-     * @param serialNumbers the serial numbers sold, one per unit, when the product tracks them; otherwise empty
+     * @param serialNumbers the serial numbers sold, one per unit, when the product has serial numbers (MANUAL or LIST); otherwise empty
      */
     public record Line(long saleLineId, long productId, BigDecimal quantity, List<String> serialNumbers) {
     }

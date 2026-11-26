@@ -2,6 +2,7 @@ package com.medinasystems.pos.sales.application;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.function.Function;
 
 import com.medinasystems.pos.sales.domain.CalculatedLine;
 import com.medinasystems.pos.sales.domain.DiscountType;
@@ -19,24 +20,25 @@ public record SaleLineView(int lineNumber, long productId, String sku, String de
                            BigDecimal taxRate, Long priceListId, DiscountType discountType, BigDecimal discountValue,
                            BigDecimal discountAmount, BigDecimal subtotal, BigDecimal taxAmount, BigDecimal total,
                            BigDecimal returnedQuantity, Long originalLineId, List<String> serialNumbers,
-                           List<String> returnedSerialNumbers) {
+                           List<String> returnedSerialNumbers, String serialMode) {
 
-    public static SaleLineView from(CalculatedLine calculated) {
+    /** {@code serialModes} gives the serial mode of a product by id (NONE, MANUAL or LIST). */
+    public static SaleLineView from(CalculatedLine calculated, Function<Long, String> serialModes) {
         PricedLine line = calculated.line();
         return new SaleLineView(calculated.lineNumber(), line.productId(), line.sku(), line.description(),
                 line.quantity(), line.unitPrice(), line.listPrice(), line.priceOverridden(), line.taxCode(),
                 line.taxRate(), line.priceListId(), line.discount() == null ? null : line.discount().type(),
                 line.discount() == null ? null : line.discount().value(),
                 calculated.discountAmount(), calculated.subtotal(), calculated.taxAmount(), calculated.total(),
-                BigDecimal.ZERO, null, line.serialNumbers(), List.of());
+                BigDecimal.ZERO, null, line.serialNumbers(), List.of(), serialModes.apply(line.productId()));
     }
 
-    public static SaleLineView from(SaleLine line) {
+    public static SaleLineView from(SaleLine line, Function<Long, String> serialModes) {
         return new SaleLineView(line.getLineNumber().intValue(), line.getProductId(), line.getSku(),
                 line.getDescription(), line.getQuantity(), line.getUnitPrice(), line.getListPrice(),
                 line.isPriceOverridden(), line.getTaxCode(), line.getTaxRate(), line.getPriceListId(),
                 line.getDiscountType(), line.getDiscountValue(), line.getDiscountAmount(), line.getSubtotal(),
                 line.getTaxAmount(), line.getTotal(), line.getReturnedQuantity(), line.getOriginalLineId(),
-                line.getSerialNumbers(), line.getReturnedSerialNumbers());
+                line.getSerialNumbers(), line.getReturnedSerialNumbers(), serialModes.apply(line.getProductId()));
     }
 }

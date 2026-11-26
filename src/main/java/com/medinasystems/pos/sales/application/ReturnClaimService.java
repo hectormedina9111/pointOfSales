@@ -60,10 +60,12 @@ public class ReturnClaimService {
     private final BranchDirectory branches;
     private final CompanyDirectory companies;
     private final Clock clock;
+    private final SerialModes serialModes;
 
     public ReturnClaimService(SaleRepository sales, SaleLineRepository lines, PaymentRepository payments,
                               SaleReturnClaimRepository claims, CustomerDirectory customers, BranchDirectory branches,
-                              CompanyDirectory companies, Clock clock) {
+                              CompanyDirectory companies, Clock clock, SerialModes serialModes) {
+        this.serialModes = serialModes;
         this.sales = sales;
         this.lines = lines;
         this.payments = payments;
@@ -154,7 +156,8 @@ public class ReturnClaimService {
             if (request.quantity() == null || request.quantity().signum() <= 0) {
                 throw new BusinessRuleException("INVALID_QUANTITY", "The quantity must be greater than zero");
             }
-            BigDecimal returnable = ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO))
+            BigDecimal returnable = ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO),
+                    serialModes.of(line.getProductId()))
                     .returnableQuantity();
             if (request.quantity().setScale(3, RoundingMode.HALF_UP).compareTo(returnable) > 0) {
                 throw new BusinessRuleException("RETURN_QUANTITY_EXCEEDED",
@@ -171,7 +174,7 @@ public class ReturnClaimService {
         long saleId = sale.getId();
         return ReturnableView.of(sale, sameDay(sale), customerName(sale.getCustomerId()),
                 branchName(sale.getBranchId()), false, ReturnRefunds.byLine(lines, saleId),
-                ReturnRefunds.byMethod(payments, saleId), held(saleId));
+                ReturnRefunds.byMethod(payments, saleId), held(saleId), serialModes::of);
     }
 
     private Map<Long, BigDecimal> held(long saleId) {
