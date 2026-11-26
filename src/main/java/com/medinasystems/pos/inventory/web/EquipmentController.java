@@ -11,8 +11,17 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
+import com.medinasystems.pos.inventory.domain.SerialStatus;
+import com.medinasystems.pos.inventory.application.EquipmentDetailView;
+import com.medinasystems.pos.inventory.application.EquipmentQueryService;
+import com.medinasystems.pos.shared.web.PageResponse;
+
 import org.springframework.http.HttpStatus;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -36,10 +45,32 @@ public class EquipmentController {
 
     private final InventoryDocumentService documents;
     private final EquipmentService equipment;
+    private final EquipmentQueryService queries;
 
-    public EquipmentController(InventoryDocumentService documents, EquipmentService equipment) {
+    public EquipmentController(InventoryDocumentService documents, EquipmentService equipment,
+                               EquipmentQueryService queries) {
         this.documents = documents;
         this.equipment = equipment;
+        this.queries = queries;
+    }
+
+    /**
+     * The equipment the node sees. {@code search} matches part of the serial number or the external code, without regard to case.
+     */
+    @GetMapping("/equipment")
+    public PageResponse<EquipmentView> list(@RequestParam(required = false) String search,
+                                            @RequestParam(required = false) Long productId,
+                                            @RequestParam(required = false) Long categoryId,
+                                            @RequestParam(required = false) SerialStatus status,
+                                            @RequestParam(required = false) Long branchId,
+                                            @PageableDefault(sort = {"serialNumber", "id"}) Pageable pageable) {
+        return PageResponse.from(queries.list(search, productId, categoryId, status, branchId, pageable));
+    }
+
+    /** One unit with its movements and the characteristic template of its category. */
+    @GetMapping("/equipment/{id}")
+    public EquipmentDetailView get(@PathVariable long id) {
+        return queries.get(id);
     }
 
     /**
