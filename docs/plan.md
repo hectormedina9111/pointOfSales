@@ -1527,6 +1527,17 @@ Decidido el 25 de noviembre de 2026. Cubre RF-12 a RF-16, RF-23 y RF-42. El cré
 
 Estado al 25 de noviembre de 2026: los pasos 1 a 7 están programados y compilan en el CI (backend #32 a #35, frontend #21 a #23, apilados sobre el 3B); falta la prueba del responsable en la máquina virtual.
 
+### Equipos: serie con características (decisión del 25 de noviembre de 2026)
+
+El responsable definió el concepto de **equipo** (como en SAP): una unidad con serie lleva sus características y un código externo para integrarse con otros sistemas.
+
+- **Equipo = serial + características + código externo.** Cada unidad de un producto con serie es un equipo (`product_serial`) con `external_code` (opcional, único cuando tiene valor) y sus características (`attributes`, JSONB validado contra la plantilla). Un solo número de serie por equipo; las características no son identificadores únicos.
+- **Plantilla por categoría:** en la central, cada categoría define las características de sus equipos (`category_attribute`: código, nombre, tipo TEXT, NUMBER, DATE o LIST con sus opciones, obligatorio, orden, activo). Ejemplo: Motos → color (lista), número de motor (texto), año (número). Los productos no llevan características; solo los equipos. La plantilla se replica a las tiendas.
+- **Carga de equipos:** pantalla especial donde se elige sucursal, producto con serie y costo, y se cargan los equipos (escaneo de la serie, una fila por equipo con los campos de la plantilla y el código externo, o archivo CSV). Al registrar, la carga **es la entrada de inventario**: crea el documento de entrada con esos equipos. La entrada general ya no acepta productos con serie, y un ajuste solo puede quitar equipos o reingresar equipos ya conocidos.
+- **Movimientos:** ventas, devoluciones, salidas y **transferencias mueven los equipos con sus características**; al recibir una transferencia, la tienda destino crea el equipo con su serie, código externo y características.
+- **Consulta y corrección:** listado de equipos con filtros y paginación en el servidor, detalle con características, código externo y bitácora; el nodo que opera la sucursal puede corregir características y código externo.
+- `external_code` existe ahora en `app_user`, `customer` y `product_serial` (equipos).
+
 ### Pendientes conocidos del inventario
 
 - Los seriales no se replican: la tienda de origen ve sus seriales EN TRÁNSITO aun después de que el destino los recibe; el estado consolidado está en la central.
