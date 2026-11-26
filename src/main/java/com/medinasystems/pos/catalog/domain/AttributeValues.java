@@ -31,7 +31,7 @@ public final class AttributeValues {
      * @throws BusinessRuleException UNKNOWN_ATTRIBUTE, ATTRIBUTE_REQUIRED or INVALID_ATTRIBUTE_VALUE
      */
     public static Map<String, Object> normalize(List<AttributeDefinition> definitions, Map<String, ?> values) {
-        Map<String, Object> input = values == null ? Map.of() : values;
+        Map<String, ?> input = values == null ? Map.of() : values;
         for (String code : input.keySet()) {
             if (definitions.stream().noneMatch(definition -> definition.code().equals(code))) {
                 throw new BusinessRuleException("UNKNOWN_ATTRIBUTE", "The characteristic {0} is not in the template",
