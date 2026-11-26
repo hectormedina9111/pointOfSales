@@ -1555,6 +1555,21 @@ El responsable definió el concepto de **equipo** (como en SAP): una unidad con 
 - **Consulta y corrección:** listado de equipos con filtros y paginación en el servidor, detalle con características, código externo y bitácora; el nodo que opera la sucursal puede corregir características y código externo.
 - `external_code` existe ahora en `app_user`, `customer` y `product_serial` (equipos).
 
+### Tres configuraciones de serie del producto (decisión del 25 de noviembre de 2026)
+
+El producto define cómo maneja la serie (`product.serial_mode`, reemplaza a `tracks_serials`):
+
+| Configuración | Inventario | Al facturar | Devolución y transferencia |
+| --- | --- | --- | --- |
+| **Sin serie** (`NONE`) | Por cantidad | Solo cantidad | Por cantidad |
+| **Serie manual** (`MANUAL`) | Por cantidad; la entrada general no pide series | El cajero escribe o escanea una serie por unidad; queda en la venta (`sale_line_serial`) | Se eligen las series vendidas que vuelven; la existencia vuelve por cantidad. La transferencia va por cantidad |
+| **Serie de lista** (`LIST`) | Por equipo, cargado antes en Carga de equipos (características y código externo) | Solo se eligen o escanean equipos disponibles en la sucursal | El equipo vuelve disponible; la transferencia mueve los equipos |
+
+- Los productos que tenían `tracks_serials = true` pasan a `LIST`.
+- `MANUAL` y `LIST` exigen `tracks_inventory = true` y unidad sin decimales; un servicio siempre es `NONE`.
+- En `MANUAL` no se puede facturar una serie que ya esté vendida y sin devolver para el mismo producto (`SERIAL_ALREADY_SOLD`). No lleva características ni código externo.
+- La búsqueda de equipos y series también encuentra las series manuales por su venta.
+
 ### Pendientes conocidos del inventario
 
 - Los seriales no se replican: la tienda de origen ve sus seriales EN TRÁNSITO aun después de que el destino los recibe; el estado consolidado está en la central.
