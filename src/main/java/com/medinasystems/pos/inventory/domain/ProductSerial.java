@@ -1,12 +1,16 @@
 package com.medinasystems.pos.inventory.domain;
 
 import java.time.Instant;
+import java.util.Map;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import com.medinasystems.pos.shared.AuditableEntity;
 
@@ -20,6 +24,10 @@ public class ProductSerial extends AuditableEntity {
 
     @Column(name = "product_id", nullable = false)
     private long productId;
+
+    /** Category of the product when the unit was created: a copy, used to filter the equipment in the database. */
+    @Column(name = "category_id")
+    private Long categoryId;
 
     @Column(name = "serial_number", nullable = false, length = 100)
     private String serialNumber;
@@ -46,12 +54,22 @@ public class ProductSerial extends AuditableEntity {
     @Column(name = "synced_at")
     private Instant syncedAt;
 
+    /** The external code of the equipment (the code in the ERP); optional, unique when it has a value. */
+    @Column(name = "external_code", length = 50)
+    private String externalCode;
+
+    /** The characteristics of the equipment, validated against the template of its category. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "attributes", nullable = false, columnDefinition = "jsonb")
+    private Map<String, Object> attributes = Map.of();
+
     protected ProductSerial() {
     }
 
     /** A unit that enters a branch for the first time. The movement id is set when the movement is written. */
-    public ProductSerial(long productId, String serialNumber, long branchId, Instant receivedAt) {
+    public ProductSerial(long productId, Long categoryId, String serialNumber, long branchId, Instant receivedAt) {
         this.productId = productId;
+        this.categoryId = categoryId;
         this.serialNumber = serialNumber;
         this.branchId = branchId;
         this.status = SerialStatus.AVAILABLE;
@@ -64,6 +82,12 @@ public class ProductSerial extends AuditableEntity {
         this.status = SerialStatus.AVAILABLE;
         this.receivedAt = at;
         this.entryMovementId = movementId;
+    }
+
+    /** Sets the external code and the characteristics of the equipment. Both are checked by the caller. */
+    public void applyEquipment(String externalCode, Map<String, Object> attributes) {
+        this.externalCode = externalCode;
+        this.attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
     }
 
     /** The unit leaves with a sale; the sale is kept as the last one. */
@@ -89,6 +113,18 @@ public class ProductSerial extends AuditableEntity {
 
     public String getSerialNumber() {
         return serialNumber;
+    }
+
+    public Long getCategoryId() {
+        return categoryId;
+    }
+
+    public String getExternalCode() {
+        return externalCode;
+    }
+
+    public Map<String, Object> getAttributes() {
+        return attributes;
     }
 
     public long getBranchId() {

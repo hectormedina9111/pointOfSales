@@ -139,7 +139,7 @@ public class SerialQueryService {
                     names.productName(unit.getProductId()), unit.getSerialNumber(), unit.getStatus(),
                     unit.getBranchId(), names.branchName(unit.getBranchId()), unit.getReceivedAt(), unit.getSoldAt(),
                     unit.getLastSaleId(), unit.getLastSaleId() == null ? null : receiptNumbers.get(unit.getLastSaleId()),
-                    trail));
+                    unit.getExternalCode(), unit.getAttributes(), trail));
         }
         return views;
     }

@@ -43,7 +43,7 @@ Reglas permanentes para trabajar en este repositorio. El plan completo (requerim
 - **Rangos de id por nodo:** la central usa 1 a 999 999 999; la tienda N usa desde N × 1 000 000 000 + 1. La central asigna el rango al registrar la tienda y la tienda ajusta sus secuencias al arrancar. Nunca crear ids fuera del rango del nodo.
 - Columnas de auditoría en todas las tablas: `created_at`, `created_by`, `updated_at`, `updated_by`, `version` (bloqueo optimista con `@Version`).
 - Borrado lógico con `active`; los documentos (ventas, recibos) nunca se borran, se anulan.
-- `external_code` (código en el ERP) existe solo en `app_user` y `customer`; es opcional y único cuando tiene valor. Los productos **no** llevan código externo.
+- `external_code` (código en el ERP) existe solo en `app_user`, `customer` y `product_serial` (equipos); es opcional y único cuando tiene valor. Los productos **no** llevan código externo.
 - Montos `NUMERIC(14,2)`, cantidades `NUMERIC(12,3)`, tasas `NUMERIC(5,2)`, fechas `TIMESTAMPTZ` (UTC en base de datos).
 - Cada cambio de esquema es una migración Flyway nueva; nunca editar una migración ya aplicada. Un número de versión que ya usó una rama o PR (aunque se haya cerrado sin unir) no se reutiliza: alguien pudo aplicarlo en su base local.
 

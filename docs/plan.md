@@ -551,6 +551,20 @@ Las listas se asignan con `branch.default_price_list_id` y `customer.price_list_
 
 ### Inventario
 
+**category\_attribute** (plantilla de características de los equipos de una categoría; dato maestro, se replica a las tiendas)
+
+| Columna | Tipo | Restricciones | Descripción |
+| --- | --- | --- | --- |
+| id | BIGINT | PK |  |
+| category\_id | BIGINT | FK category, NOT NULL |  |
+| code | VARCHAR(40) | NOT NULL; UNIQUE con category\_id; solo letras minúsculas, dígitos y guion bajo | Clave; no cambia |
+| name | VARCHAR(80) | NOT NULL | Nombre visible |
+| data\_type | VARCHAR(10) | NOT NULL; TEXT, NUMBER, DATE o LIST | Tipo de dato; no cambia |
+| options | JSONB | NULL; arreglo de textos, obligatorio en LIST | Opciones de una lista |
+| required | BOOLEAN | NOT NULL DEFAULT false | Obligatorio al cargar el equipo |
+| sort\_order | INT | NOT NULL DEFAULT 0 | Orden en el formulario |
+| active | BOOLEAN | NOT NULL DEFAULT true | Borrado lógico |
+
 **inventory\_item** (stock actual; equivale a `MultiInventoryItem` de Salespoint)
 
 | Columna | Tipo | Restricciones | Descripción |
@@ -590,6 +604,9 @@ Las listas se asignan con `branch.default_price_list_id` y `customer.price_list_
 | entry\_movement\_id | BIGINT | FK inventory\_movement | Movimiento con el que ingresó |
 | received\_at | TIMESTAMPTZ | NOT NULL |  |
 | sold\_at | TIMESTAMPTZ |  | Última venta |
+| external\_code | VARCHAR(50) |  | Código externo (ERP); opcional, UNIQUE cuando tiene valor |
+| attributes | JSONB | NOT NULL DEFAULT '{}' | Características del equipo, validadas contra `category_attribute` |
+| category\_id | BIGINT | FK category |  | Categoría del producto al crear el equipo (copia para filtrar) |
 | warranty\_expires\_at | DATE |  |  |
 | notes | VARCHAR(300) |  |  |
 
@@ -1527,6 +1544,17 @@ Decidido el 25 de noviembre de 2026. Cubre RF-12 a RF-16, RF-23 y RF-42. El cré
 
 Estado al 25 de noviembre de 2026: los pasos 1 a 7 están programados y compilan en el CI (backend #32 a #35, frontend #21 a #23, apilados sobre el 3B); falta la prueba del responsable en la máquina virtual.
 
+### Equipos: serie con características (decisión del 25 de noviembre de 2026)
+
+El responsable definió el concepto de **equipo** (como en SAP): una unidad con serie lleva sus características y un código externo para integrarse con otros sistemas.
+
+- **Equipo = serial + características + código externo.** Cada unidad de un producto con serie es un equipo (`product_serial`) con `external_code` (opcional, único cuando tiene valor) y sus características (`attributes`, JSONB validado contra la plantilla). Un solo número de serie por equipo; las características no son identificadores únicos.
+- **Plantilla por categoría:** en la central, cada categoría define las características de sus equipos (`category_attribute`: código, nombre, tipo TEXT, NUMBER, DATE o LIST con sus opciones, obligatorio, orden, activo). Ejemplo: Motos → color (lista), número de motor (texto), año (número). Los productos no llevan características; solo los equipos. La plantilla se replica a las tiendas.
+- **Carga de equipos:** pantalla especial donde se elige sucursal, producto con serie y costo, y se cargan los equipos (escaneo de la serie, una fila por equipo con los campos de la plantilla y el código externo, o archivo CSV). Al registrar, la carga **es la entrada de inventario**: crea el documento de entrada con esos equipos. La entrada general ya no acepta productos con serie, y un ajuste solo puede quitar equipos o reingresar equipos ya conocidos.
+- **Movimientos:** ventas, devoluciones, salidas y **transferencias mueven los equipos con sus características**; al recibir una transferencia, la tienda destino crea el equipo con su serie, código externo y características.
+- **Consulta y corrección:** listado de equipos con filtros y paginación en el servidor, detalle con características, código externo y bitácora; el nodo que opera la sucursal puede corregir características y código externo.
+- `external_code` existe ahora en `app_user`, `customer` y `product_serial` (equipos).
+
 ### Pendientes conocidos del inventario
 
 - Los seriales no se replican: la tienda de origen ve sus seriales EN TRÁNSITO aun después de que el destino los recibe; el estado consolidado está en la central.
@@ -2437,3 +2465,33 @@ El bodeguero recibe estos privilegios y el menú `MENU_INVENTORY_TRANSFERS` ("Tr
 - Los códigos de la central (`DUPLICATE_TRANSFER_NUMBER`, `BRANCH_MISMATCH`, `TRANSFER_MISSING` y los demás de las subidas) no llegan a la persona: van en el recibo del outbox y no tienen texto en los archivos de mensajes.
 - Una recarga de la foto inicial borra las transferencias locales de la tienda que aún no subieron (igual que los créditos). Pendiente para antes del piloto.
 - Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → ventas y organización sin ciclos) y el CI quedan para verificar.
+
+### Decisiones de implementación: inventario paso 9 (equipos)
+
+**Migración V24.** `category_attribute` (plantilla por categoría; disparador `sync_log_change(..., 'main')` y entrada en `SyncTables` después de `category`). `product_serial` gana `external_code` (UNIQUE parcial), `attributes` (JSONB, `{}` por defecto) y `category_id`, este último copiado del producto al crear el equipo y rellenado en los equipos existentes con las copias de existencia de su producto. `inventory_transfer_line_serial` gana `external_code` y `attributes`.
+
+**Plantilla (catálogo).** `CategoryAttributeService` en la central; la lectura es para todos. El código no cambia y el tipo de dato tampoco: `ATTRIBUTE_TYPE_IMMUTABLE` se agrega a lo pedido porque los valores guardados dependen del tipo. Un valor se valida contra la plantilla en `AttributeValues` (dominio, sin base de datos): claves desconocidas, obligatorios en blanco, números decimales, fechas ISO `yyyy-MM-dd`, listas con opciones exactas y textos de hasta 200 caracteres. Los números se guardan como JSON numbers. La API pública es `CategoryAttributes` (`forCategory`, `validate`); una categoría nula no tiene plantilla.
+
+**Carga de equipos.** `POST /api/v1/inventory/equipment-loads` llama a `InventoryDocumentService.postEquipmentLoad`: la entrada es un solo documento con una línea cuya cantidad son los equipos. La revisión (producto con serie, seriales, códigos externos repetidos dentro de la carga o ya usados por otro equipo del nodo, plantilla) está en `EquipmentRules` y corre después de revisar la clave de idempotencia, así que repetir una carga devuelve el documento anterior. Los campos de cada equipo se escriben en la misma transacción, antes de armar la subida.
+
+**Documentos generales.** Una entrada de un producto con serie responde `SERIAL_PRODUCT_USE_EQUIPMENT_LOAD`. Un ajuste solo acepta seriales que el nodo ya conoce (con fila en `product_serial`, como un REMOVED); un serial nuevo responde lo mismo.
+
+**Transferencias.** El envío copia el código externo y las características de cada unidad a la fila de serie de la transferencia. La recepción revisa que los códigos no estén en otro equipo del nodo y, después del `TRANSFER_IN`, aplica los datos enviados a la unidad.
+
+**Subida.** `INVENTORY_DOCUMENT`, `INVENTORY_MOVEMENTS` e `INVENTORY_TRANSFER_SENT` llevan `externalCode` y `attributes` (y `categoryId`) en cada serial. La central los guarda al insertar. Al actualizar una fila existente, un código nulo o unas características vacías **no borran** lo que la central ya tiene (`COALESCE` y `'{}'`): así una devolución que crea un equipo sin datos no los borra. Un código que otra unidad ya usa en la central se rechaza con `DUPLICATE_EQUIPMENT_EXTERNAL_CODE` antes de escribir.
+
+**Edición.** `PUT /api/v1/inventory/equipment/{id}` exige que el nodo opere la sucursal del equipo (`INVENTORY_BRANCH_NOT_OPERATED`) y revisa la plantilla y el código. La tienda encola `EQUIPMENT_UPDATED` (con el `updatedAt` de la edición); la central busca la fila por producto y número de serie, rechaza si la fila está en otra sucursal (`EQUIPMENT_NOT_IN_BRANCH`) o si el código ya lo usa otra fila, y aplica solo si la edición es más nueva que la guardada.
+
+**Consultas.** `GET /api/v1/inventory/equipment` (búsqueda por serie o código externo sin distinguir mayúsculas, filtros de producto, categoría, estado y sucursal, paginado en la base de datos) y `GET /api/v1/inventory/equipment/{id}` (con movimientos y la plantilla activa de la categoría). Las vistas de `/products/{id}/serials` y `/serials` agregan `externalCode` y `attributes`. Una tienda ve su sucursal; las unidades vendidas allí siguen en esa sucursal, así que no hace falta un filtro extra.
+
+**Menús y privilegios.** `MENU_INVENTORY_EQUIPMENT` ("Equipos", `/inventory/equipment`) y `MENU_INVENTORY_EQUIPMENT_LOAD` ("Carga de equipos", `/inventory/equipment-loads/new`). `MENU_INVENTORY_SERIALS` se desactiva en `MenuSeeder` (`RETIRED_MENUS`), y su búsqueda pasa a Equipos. Privilegios nuevos: `GET_CATEGORIES_ID_ATTRIBUTES` (cajero, bodeguero), `POST_INVENTORY_EQUIPMENT_LOADS`, `GET_INVENTORY_EQUIPMENT`, `GET_INVENTORY_EQUIPMENT_ID`, `PUT_INVENTORY_EQUIPMENT_ID` (bodeguero; el cajero solo lee). Los privilegios de plantilla de escritura (`POST`, `PUT`, `DELETE` de `/categories/{id}/attributes`) son solo de la central y se registran por el registrador de endpoints.
+
+**Mensajes.** Nuevos en ambos archivos: `PRODUCT_NOT_SERIALIZED`, `SERIAL_PRODUCT_USE_EQUIPMENT_LOAD`, `DUPLICATE_EQUIPMENT_EXTERNAL_CODE`, `EXTERNAL_CODE_TOO_LONG`, `UNKNOWN_ATTRIBUTE`, `ATTRIBUTE_REQUIRED`, `INVALID_ATTRIBUTE_VALUE`, `DUPLICATE_ATTRIBUTE_CODE`, `ATTRIBUTE_CODE_INVALID`, `ATTRIBUTE_CODE_IMMUTABLE`, `ATTRIBUTE_TYPE_IMMUTABLE`, `ATTRIBUTE_OPTIONS_REQUIRED`. Los códigos de la subida (`EQUIPMENT_NOT_IN_BRANCH`, etc.) no tienen texto, como en los pasos anteriores.
+
+**Límites y pendientes.**
+- Devolución de un equipo vendido en otra tienda: la tienda crea la fila con características vacías. La plantilla de la devolución (`returnableSerialNumbers`) solo lleva números de serie, y llevar los datos sería un acoplamiento entre ventas e inventario; queda como brecha conocida. La central conserva los datos que ya tenía.
+- La unicidad del código externo se comprueba en cada nodo con su propia base; entre nodos se garantiza solo al subir (la central rechaza). Dos tiendas que asignan el mismo código a la vez se ven en la central.
+- `product_serial.category_id` es una copia tomada al crear el equipo; si el producto cambia de categoría después, el filtro de categoría no cambia.
+- Cambiar las opciones de una lista no revisa los valores ya guardados.
+- Las características de una plantilla desactivada no se muestran etiquetadas en el detalle (la lectura usa solo la plantilla activa).
+- Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → catálogo sin ciclos) y el CI quedan para verificar.

@@ -74,10 +74,12 @@ public class MenuSeeder implements ApplicationRunner {
                     "/inventory/stock", "stack-2", 1),
             new MenuDefinition("MENU_INVENTORY_DOCUMENTS", "MENU_INVENTORY", "inventory",
                     "Documentos de inventario", "/inventory/documents", "file-text", 2),
-            new MenuDefinition("MENU_INVENTORY_SERIALS", "MENU_INVENTORY", "inventory", "Seriales",
-                    "/inventory/serials", "barcode", 3),
+            new MenuDefinition("MENU_INVENTORY_EQUIPMENT", "MENU_INVENTORY", "inventory", "Equipos",
+                    "/inventory/equipment", "barcode", 3),
+            new MenuDefinition("MENU_INVENTORY_EQUIPMENT_LOAD", "MENU_INVENTORY", "inventory", "Carga de equipos",
+                    "/inventory/equipment-loads/new", "upload", 4),
             new MenuDefinition("MENU_INVENTORY_TRANSFERS", "MENU_INVENTORY", "inventory", "Transferencias",
-                    "/inventory/transfers", "truck", 4),
+                    "/inventory/transfers", "truck", 5),
             new MenuDefinition("MENU_PRICING", null, "pricing", "Precios", null, "tag", 30),
             new MenuDefinition("MENU_PRICING_PRICE_LISTS", "MENU_PRICING", "pricing", "Listas de precios",
                     "/pricing/price-lists", "list", 1),
@@ -105,6 +107,9 @@ public class MenuSeeder implements ApplicationRunner {
             new MenuDefinition("MENU_CUSTOMERS", null, "customer", "Clientes", "/customers", "users", 60),
             new MenuDefinition("MENU_AUDIT", null, "audit", "Auditoría", "/audit", "history", 80));
 
+    /** Menus replaced by another one. Their privilege stays in the table, inactive, so the menu disappears. */
+    static final List<String> RETIRED_MENUS = List.of("MENU_INVENTORY_SERIALS");
+
     private final PrivilegeRepository privileges;
     private final RoleRepository roles;
 
@@ -125,7 +130,15 @@ public class MenuSeeder implements ApplicationRunner {
         for (MenuDefinition definition : ACTIONS) {
             created += seed(PrivilegeType.ACTION, definition, admin);
         }
+        RETIRED_MENUS.forEach(this::retire);
         log.info("Menu and action privileges created: {} of {}", created, MENUS.size() + ACTIONS.size());
+    }
+
+    /** Deactivates a menu that is no longer offered. Nothing is deleted: the grants stay as they are. */
+    private void retire(String code) {
+        privileges.findByCode(code).filter(Privilege::isActive).ifPresent(privilege ->
+                privilege.update(privilege.getName(), privilege.getDescription(), privilege.getParent(),
+                        privilege.getFrontendRoute(), privilege.getIcon(), privilege.getSortOrder(), false));
     }
 
     /** Creates the privilege when its code is missing, and grants it to ADMIN. Returns 1 when it was created. */

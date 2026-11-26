@@ -13,6 +13,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.AuditorAware;
@@ -26,11 +27,13 @@ import com.medinasystems.pos.inventory.domain.InventoryDocument;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentCounter;
 import com.medinasystems.pos.inventory.domain.InventoryDocumentType;
 import com.medinasystems.pos.inventory.domain.InventoryItem;
+import com.medinasystems.pos.inventory.domain.ProductSerial;
 import com.medinasystems.pos.inventory.domain.StockCalculator;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentCounterRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
+import com.medinasystems.pos.inventory.infrastructure.ProductSerialRepository;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.catalog.SaleableProducts;
 import com.medinasystems.pos.organization.BranchDirectory;
@@ -39,6 +42,8 @@ import com.medinasystems.pos.shared.AuditEvent;
 import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.BusinessRuleException;
 import com.medinasystems.pos.shared.NodeProperties;
+import com.medinasystems.pos.shared.SerialNumbers;
+import com.medinasystems.pos.catalog.SaleableProduct;
 import com.medinasystems.pos.sync.Outbox;
 import com.medinasystems.pos.inventory.application.InventoryDocumentData.LineData;
 
@@ -72,13 +77,16 @@ public class InventoryDocumentService {
     private final AuditorAware<String> auditor;
     private final Clock clock;
     private final InventoryTransferRepository transfers;
+    private final ProductSerialRepository serialUnits;
+    private final EquipmentRules equipmentRules;
 
     public InventoryDocumentService(InventoryDocumentRepository documents, InventoryDocumentCounterRepository counters,
                                     InventoryItemRepository items, StockLedger ledger, InventoryBranches branches,
                                     BranchScope scope, NodeProperties node, BranchDirectory branchDirectory,
                                     UserDirectory users, SaleableProducts products, Outbox outbox,
                                     SerialTrail serialTrail, ApplicationEventPublisher events,
-                                    AuditorAware<String> auditor, Clock clock, InventoryTransferRepository transfers) {
+                                    AuditorAware<String> auditor, Clock clock, InventoryTransferRepository transfers,
+                                    ProductSerialRepository serialUnits, EquipmentRules equipmentRules) {
         this.documents = documents;
         this.counters = counters;
         this.items = items;
@@ -95,10 +103,13 @@ public class InventoryDocumentService {
         this.auditor = auditor;
         this.clock = clock;
         this.transfers = transfers;
+        this.serialUnits = serialUnits;
+        this.equipmentRules = equipmentRules;
     }
 
     /**
-     * Posts a document. A key already used returns the document that key created, and posts nothing.
+     * Posts a document. A key already used returns the document that key created, and posts nothing. Entries of products that
+     * track serial numbers and adjustments with new serial numbers are refused: those units enter with an equipment load.
      *
      * @throws BusinessRuleException with the code of the rule that failed; the document is not kept
      */
@@ -111,10 +122,47 @@ public class InventoryDocumentService {
         long branchId = resolveBranch(data.branchId());
         BranchInfo branch = branches.operated(branchId);
         requireValid(data);
+        requireNoEquipmentLines(data);
+        return persist(data, branch, null, userId);
+    }
 
+    /**
+     * Posts the entry of an equipment load: one line whose quantity is the number of units, each unit with its external code
+     * and characteristics. The units are checked before anything is written, and they are stored with the movement.
+     *
+     * @throws BusinessRuleException with the code of the rule that failed; the document is not kept
+     */
+    public InventoryDocumentView postEquipmentLoad(EquipmentLoadData load) {
+        long userId = CurrentUser.id();
+        Optional<InventoryDocument> repeated = findRepeated(load.idempotencyKey());
+        if (repeated.isPresent()) {
+            return view(repeated.get());
+        }
+        long branchId = resolveBranch(load.branchId());
+        BranchInfo branch = branches.operated(branchId);
+        SaleableProduct product = products.find(load.productId())
+                .orElseThrow(() -> new BusinessRuleException("PRODUCT_NOT_FOUND", "The product does not exist"));
+        if (!product.tracksSerials()) {
+            throw new BusinessRuleException("PRODUCT_NOT_SERIALIZED", "The product does not track serial numbers");
+        }
+        Map<String, EquipmentUnit> equipment = equipmentRules.check(product, load.equipment());
+        InventoryDocumentData data = new InventoryDocumentData(InventoryDocumentType.ENTRY, branchId, null, load.notes(),
+                load.idempotencyKey(), List.of(new LineData(product.id(), BigDecimal.valueOf(equipment.size()), null,
+                load.unitCost(), List.copyOf(equipment.keySet()))));
+        requireValid(data);
+        return persist(data, branch, equipment, userId);
+    }
+
+    /**
+     * Numbers and writes the document, then applies its lines. {@code equipment} is null for a general document; for an
+     * equipment load it holds the checked units, keyed by serial number.
+     */
+    private InventoryDocumentView persist(InventoryDocumentData data, BranchInfo branch,
+                                          Map<String, EquipmentUnit> equipment, long userId) {
+        long branchId = branch.branchId();
         // Serializes the documents of the branch and type: a second request with the same key waits here.
         InventoryDocumentCounter counter = lockCounter(branchId, data.type());
-        repeated = findRepeated(data.idempotencyKey());
+        Optional<InventoryDocument> repeated = findRepeated(data.idempotencyKey());
         if (repeated.isPresent()) {
             return view(repeated.get());
         }
@@ -126,7 +174,7 @@ public class InventoryDocumentService {
 
         List<StockMovement> moved = new ArrayList<>();
         for (LineData line : sortedByProduct(data.lines())) {
-            moved.addAll(applyLine(document, branchId, data.type(), line, userId));
+            moved.addAll(applyLine(document, branchId, data.type(), line, userId, equipment));
         }
         if (document.getLines().isEmpty()) {
             throw new BusinessRuleException("ADJUSTMENT_WITHOUT_CHANGE", "No line changes the stock");
@@ -143,12 +191,43 @@ public class InventoryDocumentService {
     }
 
     /**
+     * A general document cannot create equipment: an entry of a product that tracks serial numbers is refused, and an
+     * adjustment may list only the serial numbers that this node already knows.
+     *
+     * @throws BusinessRuleException SERIAL_PRODUCT_USE_EQUIPMENT_LOAD
+     */
+    private void requireNoEquipmentLines(InventoryDocumentData data) {
+        if (data.type() == InventoryDocumentType.EXIT) {
+            return;
+        }
+        for (LineData line : data.lines()) {
+            Optional<SaleableProduct> product = products.find(line.productId());
+            if (product.isEmpty() || !product.get().tracksSerials()) {
+                continue;
+            }
+            if (data.type() == InventoryDocumentType.ENTRY) {
+                throw new BusinessRuleException("SERIAL_PRODUCT_USE_EQUIPMENT_LOAD",
+                        "The equipment of this product enters with an equipment load");
+            }
+            List<String> numbers = SerialNumbers.normalize(line.serialNumbers());
+            Set<String> known = serialUnits.findByProductIdAndSerialNumberIn(line.productId(), numbers).stream()
+                    .map(ProductSerial::getSerialNumber).collect(Collectors.toSet());
+            for (String number : numbers) {
+                if (!known.contains(number)) {
+                    throw new BusinessRuleException("SERIAL_PRODUCT_USE_EQUIPMENT_LOAD",
+                            "The equipment {0} is new: it enters with an equipment load", number);
+                }
+            }
+        }
+    }
+
+    /**
      * Applies one line. An entry or an exit moves its quantity; an adjustment moves the stock to the counted quantity, and
      * a line that changes nothing is not kept. A serial adjustment can have two movements (units that left and units that
      * came back); the line keeps their net change.
      */
     private List<StockMovement> applyLine(InventoryDocument document, long branchId, InventoryDocumentType type,
-                                          LineData line, long userId) {
+                                          LineData line, long userId, Map<String, EquipmentUnit> equipment) {
         StockReferenceType reference = StockReferenceType.INVENTORY_DOCUMENT;
         if (type == InventoryDocumentType.ADJUSTMENT) {
             List<StockMovement> moved = ledger.count(branchId, line.productId(), line.countedQuantity(),
@@ -165,7 +244,20 @@ public class InventoryDocumentService {
                 type == InventoryDocumentType.ENTRY ? line.unitCost() : null, line.serialNumbers(), reference,
                 document.getId(), userId);
         document.addLine(moved.productId(), moved.quantity(), null, moved.previousBalance(), moved.unitCost());
+        if (equipment != null) {
+            applyEquipment(line.productId(), equipment);
+        }
         return List.of(moved);
+    }
+
+    /** Stores the external code and the characteristics on the units that the load entered. */
+    private void applyEquipment(long productId, Map<String, EquipmentUnit> equipment) {
+        for (ProductSerial unit : serialUnits.findForUpdate(productId, equipment.keySet())) {
+            EquipmentUnit checked = equipment.get(unit.getSerialNumber());
+            if (checked != null) {
+                unit.applyEquipment(checked.externalCode(), checked.attributes());
+            }
+        }
     }
 
     /** The stock of each product the movements changed, as it is after the document. */

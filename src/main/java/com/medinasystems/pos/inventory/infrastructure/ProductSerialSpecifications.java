@@ -57,4 +57,34 @@ public final class ProductSerialSpecifications {
             return cb.and(predicates.toArray(Predicate[]::new));
         };
     }
+
+    /**
+     * The equipment of the branches the node sees, with the optional filters. {@code search} matches part of the serial number or
+     * of the external code, without regard to case.
+     */
+    public static Specification<ProductSerial> equipment(String search, Long productId, Long categoryId, SerialStatus status,
+                                                         Long branchId) {
+        return (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (productId != null) {
+                predicates.add(cb.equal(root.get("productId"), productId));
+            }
+            if (categoryId != null) {
+                predicates.add(cb.equal(root.get("categoryId"), categoryId));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            if (branchId != null) {
+                predicates.add(cb.equal(root.get("branchId"), branchId));
+            }
+            if (search != null && !search.isBlank()) {
+                String pattern = "%" + InventoryItemSpecifications.escapeLike(search.trim().toLowerCase(Locale.ROOT)) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.<String>get("serialNumber")), pattern, '\\'),
+                        cb.like(cb.lower(root.<String>get("externalCode")), pattern, '\\')));
+            }
+            return cb.and(predicates.toArray(Predicate[]::new));
+        };
+    }
 }

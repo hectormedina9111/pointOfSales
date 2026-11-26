@@ -29,6 +29,12 @@ public interface ProductSerialRepository extends JpaRepository<ProductSerial, Lo
                                               @Param("status") SerialStatus status);
 
 
+    /** The units of a product with these serial numbers, without locks. */
+    List<ProductSerial> findByProductIdAndSerialNumberIn(long productId, Collection<String> numbers);
+
+    /** The units that carry one of these external codes. */
+    List<ProductSerial> findByExternalCodeIn(Collection<String> codes);
+
     /** The units with these ids, in any order. */
     List<ProductSerial> findByIdIn(Collection<Long> ids);
 }

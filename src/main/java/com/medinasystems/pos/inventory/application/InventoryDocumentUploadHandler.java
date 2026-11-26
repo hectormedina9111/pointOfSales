@@ -122,6 +122,9 @@ public class InventoryDocumentUploadHandler implements UploadHandler {
                 return UploadOutcome.retry("PRODUCT_MISSING");
             }
         }
+        if (writer.conflictingExternalCode(upload.serials()) != null) {
+            return UploadOutcome.rejected("DUPLICATE_EQUIPMENT_EXTERNAL_CODE");
+        }
         write(upload, clock.instant());
         return UploadOutcome.accepted();
     }
