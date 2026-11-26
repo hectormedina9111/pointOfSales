@@ -88,7 +88,7 @@ public class EquipmentQueryService {
             throw new ResourceNotFoundException("equipment", id);
         }
         SerialTraceView trace = serials.trace(unit.getSerialNumber(), unit.getProductId()).stream()
-                .filter(view -> view.id() == id).findFirst()
+                .filter(view -> view.id() != null && view.id() == id).findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("equipment", id));
         InventoryNames names = names();
         List<AttributeDefinition> definitions = attributes.forCategory(unit.getCategoryId());
