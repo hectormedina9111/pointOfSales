@@ -3,6 +3,7 @@ package com.medinasystems.pos.inventory.domain;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -55,8 +56,8 @@ public class InventoryTransferLine extends AuditableEntity {
     }
 
     /** One serial number of the line, which the destination may or may not receive. */
-    public InventoryTransferSerial addSerial(String serialNumber) {
-        InventoryTransferSerial serial = new InventoryTransferSerial(this, serialNumber);
+    public InventoryTransferSerial addSerial(String serialNumber, String externalCode, Map<String, Object> attributes) {
+        InventoryTransferSerial serial = new InventoryTransferSerial(this, serialNumber, externalCode, attributes);
         serials.add(serial);
         return serial;
     }

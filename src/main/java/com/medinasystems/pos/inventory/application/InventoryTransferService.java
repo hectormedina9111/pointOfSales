@@ -36,6 +36,8 @@ import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentCounterRe
 import com.medinasystems.pos.inventory.infrastructure.InventoryDocumentRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryItemRepository;
 import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
+import com.medinasystems.pos.inventory.infrastructure.ProductSerialRepository;
+import com.medinasystems.pos.inventory.domain.ProductSerial;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.organization.BranchInfo;
 import com.medinasystems.pos.security.UserDirectory;
@@ -81,13 +83,16 @@ public class InventoryTransferService {
     private final ApplicationEventPublisher events;
     private final AuditorAware<String> auditor;
     private final Clock clock;
+    private final ProductSerialRepository serialUnits;
+    private final EquipmentRules equipmentRules;
 
     public InventoryTransferService(InventoryTransferRepository transfers, InventoryDocumentCounterRepository counters,
                                     InventoryItemRepository items, StockLedger ledger, InventoryBranches branches,
                                     BranchScope scope, NodeProperties node, BranchDirectory branchDirectory,
                                     UserDirectory users, SaleableProducts products,
                                     InventoryDocumentRepository documents, Outbox outbox, SerialTrail serialTrail,
-                                    ApplicationEventPublisher events, AuditorAware<String> auditor, Clock clock) {
+                                    ApplicationEventPublisher events, AuditorAware<String> auditor, Clock clock,
+                                    ProductSerialRepository serialUnits, EquipmentRules equipmentRules) {
         this.transfers = transfers;
         this.counters = counters;
         this.items = items;
@@ -104,6 +109,8 @@ public class InventoryTransferService {
         this.events = events;
         this.auditor = auditor;
         this.clock = clock;
+        this.serialUnits = serialUnits;
+        this.equipmentRules = equipmentRules;
     }
 
     /**
@@ -140,8 +147,12 @@ public class InventoryTransferService {
             StockMovement out = ledger.apply(origin, line.productId(), StockMovementType.TRANSFER_OUT,
                     line.quantity().negate(), null, serials, StockReferenceType.TRANSFER, transfer.getId(), userId);
             InventoryTransferLine created = transfer.addLine(line.productId(), out.quantity().abs(), out.unitCost());
+            // The units carry their equipment data with them, so the destination can create the equipment.
+            Map<String, ProductSerial> sent = unitsByNumber(line.productId(), serials);
             for (String serial : serials) {
-                created.addSerial(serial);
+                ProductSerial unit = sent.get(serial);
+                created.addSerial(serial, unit == null ? null : unit.getExternalCode(),
+                        unit == null ? Map.of() : unit.getAttributes());
             }
             moved.add(out);
         }
@@ -182,12 +193,16 @@ public class InventoryTransferService {
         }
 
         List<Receipt> receipts = receiptsOf(transfer, data.lines());
+        for (Receipt receipt : receipts) {
+            requireFreeExternalCodes(receipt);
+        }
         List<StockMovement> moved = new ArrayList<>();
         for (Receipt receipt : receipts) {
             if (receipt.quantity().signum() > 0) {
                 moved.add(ledger.apply(transfer.getDestinationBranchId(), receipt.line().getProductId(),
                         StockMovementType.TRANSFER_IN, receipt.quantity(), receipt.line().getUnitCost(),
                         receipt.serials(), StockReferenceType.TRANSFER, transfer.getId(), userId));
+                applyReceivedEquipment(receipt);
             }
         }
 
@@ -267,6 +282,43 @@ public class InventoryTransferService {
             receipts.add(new Receipt(line, quantity, serials));
         }
         return receipts;
+    }
+
+    /** The units of a product with these serial numbers, keyed by serial number, without locks. */
+    private Map<String, ProductSerial> unitsByNumber(long productId, List<String> numbers) {
+        Map<String, ProductSerial> rows = new HashMap<>();
+        if (!numbers.isEmpty()) {
+            serialUnits.findByProductIdAndSerialNumberIn(productId, numbers)
+                    .forEach(row -> rows.put(row.getSerialNumber(), row));
+        }
+        return rows;
+    }
+
+    /** The external codes of the units received must not belong to other equipment in this node. */
+    private void requireFreeExternalCodes(Receipt receipt) {
+        if (receipt.quantity().signum() <= 0 || receipt.serials().isEmpty()) {
+            return;
+        }
+        Map<String, EquipmentUnit> units = new LinkedHashMap<>();
+        for (InventoryTransferSerial serial : receipt.line().getSerials()) {
+            if (receipt.serials().contains(serial.getSerialNumber())) {
+                units.put(serial.getSerialNumber(), new EquipmentUnit(serial.getSerialNumber(),
+                        serial.getExternalCode(), serial.getAttributes()));
+            }
+        }
+        equipmentRules.requireFreeCodes(receipt.line().getProductId(), units);
+    }
+
+    /** The units received take the external code and the characteristics they were sent with. */
+    private void applyReceivedEquipment(Receipt receipt) {
+        Map<String, InventoryTransferSerial> sent = new HashMap<>();
+        receipt.line().getSerials().forEach(serial -> sent.put(serial.getSerialNumber(), serial));
+        for (ProductSerial unit : serialUnits.findForUpdate(receipt.line().getProductId(), receipt.serials())) {
+            InventoryTransferSerial data = sent.get(unit.getSerialNumber());
+            if (data != null) {
+                unit.applyEquipment(data.getExternalCode(), data.getAttributes());
+            }
+        }
     }
 
     /** The serial numbers of a line when the product tracks them; none for any other product. */

@@ -59,8 +59,8 @@ public class TransferSentUploadHandler implements UploadHandler {
             + " received_quantity, unit_cost, created_at, created_by, updated_at, updated_by, version)"
             + " OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 0)";
     private static final String INSERT_SERIAL = "INSERT INTO inventory_transfer_line_serial (id, line_id, serial_number,"
-            + " received, created_at, created_by, updated_at, updated_by, version)"
-            + " OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)";
+            + " received, external_code, attributes, created_at, created_by, updated_at, updated_by, version)"
+            + " OVERRIDING SYSTEM VALUE VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, 0)";
 
     private final JdbcTemplate jdbc;
     private final StoreIdRanges ranges;
@@ -130,6 +130,9 @@ public class TransferSentUploadHandler implements UploadHandler {
                 return UploadOutcome.retry("PRODUCT_MISSING");
             }
         }
+        if (writer.conflictingExternalCode(upload.serials()) != null) {
+            return UploadOutcome.rejected("DUPLICATE_EQUIPMENT_EXTERNAL_CODE");
+        }
         write(upload);
         return UploadOutcome.accepted();
     }
@@ -177,8 +180,8 @@ public class TransferSentUploadHandler implements UploadHandler {
                     upload.by(), now, upload.by());
         }
         for (TransferSerial serial : upload.transferSerials()) {
-            jdbc.update(INSERT_SERIAL, serial.id(), serial.lineId(), serial.serialNumber(), serial.received(), now,
-                    upload.by(), now, upload.by());
+            jdbc.update(INSERT_SERIAL, serial.id(), serial.lineId(), serial.serialNumber(), serial.received(),
+                    serial.externalCode(), serial.attributesJson(), now, upload.by(), now, upload.by());
         }
         writer.writeMovements(upload.originBranchId(), upload.movements(), upload.by(), upload.by(), now.toInstant());
         Map<Long, Long> serialIds = writer.writeSerials(upload.serials(), upload.by(), upload.by(), now.toInstant());
@@ -190,8 +193,10 @@ public class TransferSentUploadHandler implements UploadHandler {
     static List<TransferSerial> transferSerialsFrom(JsonNode payload) {
         List<TransferSerial> serials = new ArrayList<>();
         for (JsonNode node : array(payload, "transferSerials")) {
+            JsonNode attributes = node.get("attributes");
             serials.add(new TransferSerial(longField(node, "id"), longField(node, "lineId"),
-                    text(node, "serialNumber"), bool(node, "received")));
+                    text(node, "serialNumber"), bool(node, "received"), optionalText(node, "externalCode"),
+                    attributes == null || attributes.isNull() ? "{}" : attributes.toString()));
         }
         return serials;
     }
@@ -201,7 +206,8 @@ public class TransferSentUploadHandler implements UploadHandler {
     }
 
     /** A serial number of a line, with its received flag as sent (false) or as received. */
-    record TransferSerial(long id, long lineId, String serialNumber, boolean received) {
+    record TransferSerial(long id, long lineId, String serialNumber, boolean received, String externalCode,
+                          String attributesJson) {
     }
 
     /** Every field of an INVENTORY_TRANSFER_SENT payload, read and checked before anything is written. */

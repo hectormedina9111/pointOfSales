@@ -75,6 +75,25 @@ final class InventoryUploadWriter {
         this.jdbc = jdbc;
     }
 
+    /**
+     * The external code of an uploaded unit that another unit of the central node already carries, or null when every code is
+     * free. The unit itself, with the same product and serial number, may keep its code.
+     */
+    String conflictingExternalCode(List<Serial> units) {
+        for (Serial unit : units) {
+            if (unit.externalCode() == null) {
+                continue;
+            }
+            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM product_serial WHERE external_code = ?"
+                    + " AND NOT (product_id = ? AND serial_number = ?)", Long.class, unit.externalCode(),
+                    unit.productId(), unit.serialNumber());
+            if (count != null && count > 0) {
+                return unit.externalCode();
+            }
+        }
+        return null;
+    }
+
     /** True when a query that counts rows with one argument finds at least one. */
     boolean exists(String sql, Object argument) {
         Long count = jdbc.queryForObject(sql, Long.class, argument);

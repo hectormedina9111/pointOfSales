@@ -111,6 +111,9 @@ public class InventoryMovementsUploadHandler implements UploadHandler {
                 return UploadOutcome.retry("PRODUCT_MISSING");
             }
         }
+        if (writer.conflictingExternalCode(upload.serials()) != null) {
+            return UploadOutcome.rejected("DUPLICATE_EQUIPMENT_EXTERNAL_CODE");
+        }
         writer.writeMovements(upload.branchId(), upload.movements(), upload.createdBy(), upload.updatedBy(),
                 clock.instant());
         Map<Long, Long> serialIds = writer.writeSerials(upload.serials(), upload.createdBy(), upload.updatedBy(),

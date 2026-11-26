@@ -2,6 +2,7 @@ package com.medinasystems.pos.inventory.application;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import com.medinasystems.pos.inventory.StockMovement;
 import com.medinasystems.pos.inventory.domain.InventoryItem;
@@ -30,7 +31,8 @@ public record TransferSentDocument(long id, String number, long originBranchId, 
     }
 
     /** One serial number of a line. {@code received} is false when sent. */
-    public record TransferSerialDocument(long id, long lineId, String serialNumber, boolean received) {
+    public record TransferSerialDocument(long id, long lineId, String serialNumber, boolean received,
+                                         String externalCode, Map<String, Object> attributes) {
     }
 
     static TransferSentDocument of(InventoryTransfer transfer, List<StockMovement> moved, List<InventoryItem> items,
@@ -59,6 +61,7 @@ public record TransferSentDocument(long id, String number, long originBranchId, 
     }
 
     private static TransferSerialDocument serialDocument(InventoryTransferLine line, InventoryTransferSerial serial) {
-        return new TransferSerialDocument(serial.getId(), line.getId(), serial.getSerialNumber(), serial.isReceived());
+        return new TransferSerialDocument(serial.getId(), line.getId(), serial.getSerialNumber(), serial.isReceived(),
+                serial.getExternalCode(), serial.getAttributes());
     }
 }
