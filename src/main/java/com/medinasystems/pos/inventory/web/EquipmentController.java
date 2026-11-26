@@ -12,7 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.medinasystems.pos.inventory.application.EquipmentLoadData;
 import com.medinasystems.pos.inventory.application.EquipmentRules;
+import com.medinasystems.pos.inventory.application.EquipmentService;
+import com.medinasystems.pos.inventory.application.EquipmentView;
 import com.medinasystems.pos.inventory.application.EquipmentUnit;
 import com.medinasystems.pos.inventory.application.InventoryDocumentService;
 import com.medinasystems.pos.inventory.application.InventoryDocumentView;
@@ -31,9 +35,11 @@ import com.medinasystems.pos.shared.SerialNumbers;
 public class EquipmentController {
 
     private final InventoryDocumentService documents;
+    private final EquipmentService equipment;
 
-    public EquipmentController(InventoryDocumentService documents) {
+    public EquipmentController(InventoryDocumentService documents, EquipmentService equipment) {
         this.documents = documents;
+        this.equipment = equipment;
     }
 
     /**
@@ -44,6 +50,21 @@ public class EquipmentController {
     @ResponseStatus(HttpStatus.CREATED)
     public InventoryDocumentView load(@Valid @RequestBody EquipmentLoadRequest request) {
         return documents.postEquipmentLoad(request.toData());
+    }
+
+    /**
+     * Edits the external code and the characteristics of one unit. The node must operate the branch where the unit is; the
+     * characteristics are checked against the template of the product's category.
+     */
+    @PutMapping("/equipment/{id}")
+    public EquipmentView update(@PathVariable long id, @Valid @RequestBody EquipmentUpdateRequest request) {
+        return equipment.update(id, request.externalCode(), request.attributes() == null ? Map.of()
+                : request.attributes());
+    }
+
+    /** The external code is optional: a blank code removes it. */
+    public record EquipmentUpdateRequest(@Size(max = EquipmentRules.MAX_EXTERNAL_CODE_LENGTH) String externalCode,
+                                         Map<String, Object> attributes) {
     }
 
     /** The branch is optional on a store (its own) and required on the central node. The unit cost is optional. */
