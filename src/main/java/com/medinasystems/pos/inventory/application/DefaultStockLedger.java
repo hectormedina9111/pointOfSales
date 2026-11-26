@@ -47,8 +47,9 @@ import com.medinasystems.pos.shared.SerialNumbers;
  *   <li>an incoming movement takes the given cost, or the average, or the product cost, and updates the weighted average
  *       (RETURN_IN does not change it);</li>
  *   <li>an outgoing movement leaves at the average and cannot leave a negative balance unless the branch allows it;</li>
- *   <li>a product that tracks serial numbers moves one unit per serial: an incoming unit must not be available anywhere
- *       else, an outgoing unit must be available in this branch, and the negative stock rule does not apply.</li>
+ *   <li>a LIST product moves one unit per serial: an incoming unit must not be available anywhere else, an outgoing unit
+ *       must be available in this branch, and the negative stock rule does not apply;</li>
+ *   <li>a MANUAL product moves by quantity like a product without serials, and refuses serial numbers.</li>
  * </ul>
  *
  * <p>It must run inside a transaction: the lock lasts until the transaction ends.
@@ -95,12 +96,17 @@ public class DefaultStockLedger implements StockLedger {
         if (type.incoming() != null && type.incoming() != (signedQuantity.signum() > 0)) {
             throw new IllegalArgumentException("The sign of the quantity does not match the movement type " + type);
         }
-        if (product.tracksSerials()) {
+        if (product.isSerialList()) {
             List<String> serials = SerialNumbers.normalize(serialNumbers);
             SerialNumbers.requireOnePerUnit(signedQuantity, serials);
             BigDecimal units = StockCalculator.quantity(signedQuantity, product.allowsDecimals());
             InventoryItem item = lock(branchId, product);
             return serialMove(item, branch, product, type, units, unitCost, serials, referenceType, referenceId, userId);
+        }
+        // A MANUAL product moves by quantity like NONE; its serial numbers belong to the sale, not to the stock.
+        requireNoSerials(serialNumbers);
+        if (product.hasSerials()) {
+            SerialNumbers.requireWhole(signedQuantity);
         }
         BigDecimal quantity = StockCalculator.quantity(signedQuantity, product.allowsDecimals());
         InventoryItem item = lock(branchId, product);
@@ -116,9 +122,13 @@ public class DefaultStockLedger implements StockLedger {
         if (countedQuantity == null || countedQuantity.signum() < 0) {
             throw new BusinessRuleException("INVALID_COUNTED_QUANTITY", "The counted quantity cannot be negative");
         }
-        if (product.tracksSerials()) {
+        if (product.isSerialList()) {
             return countSerials(branch, product, countedQuantity, SerialNumbers.normalize(serialNumbers),
                     referenceType, referenceId, userId);
+        }
+        requireNoSerials(serialNumbers);
+        if (product.hasSerials()) {
+            SerialNumbers.requireWhole(countedQuantity);
         }
         BigDecimal counted = StockCalculator.quantity(countedQuantity, product.allowsDecimals());
         InventoryItem item = lock(branchId, product);
@@ -145,6 +155,19 @@ public class DefaultStockLedger implements StockLedger {
             throw new BusinessRuleException("PRODUCT_NOT_INVENTORIED", "The product does not track inventory");
         }
         return product;
+    }
+
+    /**
+     * Only LIST products take serial numbers in a stock movement. A MANUAL product moves by quantity, so a serial sent with
+     * it is refused (the sale keeps the serials of its units, not the stock).
+     *
+     * @throws BusinessRuleException SERIALS_NOT_ALLOWED
+     */
+    private static void requireNoSerials(List<String> serialNumbers) {
+        if (serialNumbers != null && !serialNumbers.isEmpty()) {
+            throw new BusinessRuleException("SERIALS_NOT_ALLOWED",
+                    "The product does not take serial numbers in stock movements");
+        }
     }
 
     /** The stock row of the product in the branch, created when missing and locked until the transaction ends. */

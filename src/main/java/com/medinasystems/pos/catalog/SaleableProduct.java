@@ -12,4 +12,19 @@ import java.math.BigDecimal;
 public record SaleableProduct(long id, String sku, String name, boolean active, boolean requiresExclusiveInvoice,
                               BigDecimal cost, String productType, boolean tracksInventory, String serialMode,
                               Long categoryId, BigDecimal minStock, boolean allowsDecimals) {
+
+    /** True for a product whose units are equipment loaded with their serial numbers (serial mode LIST). */
+    public boolean isSerialList() {
+        return "LIST".equals(serialMode);
+    }
+
+    /** True for a product whose serial numbers are typed at the sale and do not identify equipment (serial mode MANUAL). */
+    public boolean isSerialManual() {
+        return "MANUAL".equals(serialMode);
+    }
+
+    /** True for a product whose sold units need a serial number: serial mode MANUAL or LIST. */
+    public boolean hasSerials() {
+        return serialMode != null && !"NONE".equals(serialMode);
+    }
 }
