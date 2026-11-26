@@ -24,7 +24,7 @@ public class DefaultSaleableProducts implements SaleableProducts {
     public Optional<SaleableProduct> find(long productId) {
         return products.findById(productId).map(product -> new SaleableProduct(product.getId(), product.getSku(),
                 product.getName(), product.isActive(), product.isRequiresExclusiveInvoice(), product.getCost(),
-                product.getProductType().name(), product.isTracksInventory(), product.isTracksSerials(),
+                product.getProductType().name(), product.isTracksInventory(), product.getSerialMode().name(),
                 product.getCategory() == null ? null : product.getCategory().getId(), product.getMinStock(),
                 product.getUnitOfMeasure().isAllowsDecimals()));
     }

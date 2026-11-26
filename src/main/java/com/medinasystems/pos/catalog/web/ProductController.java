@@ -28,6 +28,7 @@ import com.medinasystems.pos.catalog.application.ProductTaxData;
 import com.medinasystems.pos.catalog.application.ProductTaxView;
 import com.medinasystems.pos.catalog.application.ProductView;
 import com.medinasystems.pos.catalog.domain.ProductType;
+import com.medinasystems.pos.catalog.domain.SerialMode;
 import com.medinasystems.pos.shared.CentralOnly;
 import com.medinasystems.pos.shared.web.PageResponse;
 
@@ -101,7 +102,7 @@ public class ProductController {
     }
 
     /**
-     * Omitted flags take their defaults: inventory tracked, no serials, no exclusive invoice,
+     * Omitted flags take their defaults: inventory tracked, no serials (serialMode NONE), no exclusive invoice,
      * GOOD type, active. The domain applies the rules between them (for example, a SERVICE never tracks inventory).
      */
     public record ProductRequest(@NotBlank @Size(max = 40) String sku,
@@ -115,7 +116,7 @@ public class ProductController {
                                  BigDecimal cost,
                                  ProductType productType,
                                  Boolean tracksInventory,
-                                 Boolean tracksSerials,
+                                 SerialMode serialMode,
                                  Boolean requiresExclusiveInvoice,
                                  BigDecimal minStock,
                                  @Size(max = 300) String imageUrl,
@@ -125,7 +126,7 @@ public class ProductController {
             return new ProductData(sku, barcode, name, description, categoryId, taxId, unitOfMeasureId,
                     salePrice, cost, productType == null ? ProductType.GOOD : productType,
                     tracksInventory == null || tracksInventory,
-                    Boolean.TRUE.equals(tracksSerials),
+                    serialMode == null ? SerialMode.NONE : serialMode,
                     Boolean.TRUE.equals(requiresExclusiveInvoice),
                     minStock, imageUrl, active == null || active);
         }

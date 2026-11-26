@@ -9,6 +9,6 @@ import java.math.BigDecimal;
 public record ProductDetails(String sku, String barcode, String name, String description,
                              Category category, Tax tax, UnitOfMeasure unitOfMeasure,
                              BigDecimal salePrice, BigDecimal cost, ProductType productType,
-                             boolean tracksInventory, boolean tracksSerials, boolean requiresExclusiveInvoice,
+                             boolean tracksInventory, SerialMode serialMode, boolean requiresExclusiveInvoice,
                              BigDecimal minStock, String imageUrl, boolean active) {
 }
