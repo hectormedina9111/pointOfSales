@@ -93,12 +93,14 @@ public class SaleStockListener {
                       StockMovementType type, StockReferenceType reference, long referenceId) {
         List<StockMovement> moved = new ArrayList<>();
         for (Map.Entry<Long, BigDecimal> entry : quantities.entrySet()) {
-            if (!tracksInventory(entry.getKey())) {
+            SaleableProduct product = inventoryProduct(entry.getKey());
+            if (product == null) {
                 continue;
             }
             BigDecimal quantity = entry.getValue();
             BigDecimal signed = type == StockMovementType.SALE_OUT ? quantity.negate() : quantity;
-            List<String> numbers = serials.getOrDefault(entry.getKey(), List.of());
+            // Only a LIST product moves units by serial. A MANUAL product moves by quantity: its serials stay with the sale.
+            List<String> numbers = product.isSerialList() ? serials.getOrDefault(entry.getKey(), List.of()) : List.of();
             moved.add(ledger.apply(branchId, entry.getKey(), type, signed, null, numbers, reference, referenceId,
                     userId));
         }
@@ -110,9 +112,11 @@ public class SaleStockListener {
                 ResultingStock.of(items, moved, branchId), serialTrail.of(moved)));
     }
 
-    private boolean tracksInventory(long productId) {
+    /** The product when it moves stock, or null for a service or a product that does not track inventory. */
+    private SaleableProduct inventoryProduct(long productId) {
         SaleableProduct product = products.find(productId)
                 .orElseThrow(() -> new BusinessRuleException("PRODUCT_NOT_FOUND", "The product does not exist"));
-        return product.tracksInventory() && !SERVICE.equals(product.productType());
+        boolean moves = product.tracksInventory() && !SERVICE.equals(product.productType());
+        return moves ? product : null;
     }
 }

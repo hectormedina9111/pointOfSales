@@ -8,8 +8,9 @@ import java.util.List;
  * checks the product, the branch and the negative stock rule, updates the stock and its average cost, and writes the
  * movement. Each call must run inside a transaction, because the stock row is locked until the transaction ends.
  *
- * <p>A product that tracks serial numbers moves one unit per serial number: the serial list has one entry per unit, and the
- * units are tracked one by one (see the inventory documentation in the plan).
+ * <p>A LIST product (serial mode) moves one unit per serial number: the serial list has one entry per unit, and the units are
+ * tracked one by one. A MANUAL product moves by quantity, in whole units, and refuses serial numbers with
+ * {@code SERIALS_NOT_ALLOWED}; its serials belong to the sale (see the inventory documentation in the plan).
  */
 public interface StockLedger {
 
@@ -19,7 +20,7 @@ public interface StockLedger {
      *
      * @param unitCost      the cost of an incoming ENTRY or TRANSFER_IN; null to use the average or the product cost.
      *                      Ignored for the other types, which move at the current average cost.
-     * @param serialNumbers the serial numbers of a product that tracks them, one per unit; ignored for other products
+     * @param serialNumbers the serial numbers of a LIST product, one per unit; must be empty for a MANUAL product
      * @throws com.medinasystems.pos.shared.BusinessRuleException with code {@code INSUFFICIENT_STOCK} when an outgoing
      *         movement would leave a negative balance in a branch that does not allow it, {@code SERIAL_NOT_AVAILABLE}
      *         when an outgoing unit is not available in the branch, {@code SERIAL_ALREADY_EXISTS} when an incoming unit

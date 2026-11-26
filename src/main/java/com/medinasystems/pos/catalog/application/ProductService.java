@@ -147,7 +147,7 @@ public class ProductService {
         Category category = data.categoryId() == null ? null : findCategory(data.categoryId());
         return new ProductDetails(data.sku(), barcode, data.name(), data.description(), category,
                 findTax(data.taxId()), findUnit(data.unitOfMeasureId()), data.salePrice(), data.cost(),
-                data.productType(), data.tracksInventory(), data.tracksSerials(),
+                data.productType(), data.tracksInventory(), data.serialMode(),
                 data.requiresExclusiveInvoice(), data.minStock(), data.imageUrl(), data.active());
     }
 
@@ -199,7 +199,7 @@ public class ProductService {
         values.put("cost", product.getCost());
         values.put("productType", product.getProductType().name());
         values.put("tracksInventory", product.isTracksInventory());
-        values.put("tracksSerials", product.isTracksSerials());
+        values.put("serialMode", product.getSerialMode().name());
         values.put("requiresExclusiveInvoice", product.isRequiresExclusiveInvoice());
         values.put("minStock", product.getMinStock());
         values.put("active", product.isActive());

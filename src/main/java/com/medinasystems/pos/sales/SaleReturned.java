@@ -21,7 +21,7 @@ public record SaleReturned(long returnSaleId, long branchId, long userId, List<L
      * @param saleLineId the id of the line of the return document
      * @param productId  the product returned
      * @param quantity      the quantity returned, positive
-     * @param serialNumbers the serial numbers returned, one per unit, when the product tracks them; otherwise empty
+     * @param serialNumbers the serial numbers returned, one per unit, when the product has serial numbers (MANUAL or LIST); otherwise empty
      */
     public record Line(long saleLineId, long productId, BigDecimal quantity, List<String> serialNumbers) {
     }

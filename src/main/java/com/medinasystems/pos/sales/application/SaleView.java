@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.Objects;
 
 import com.medinasystems.pos.customer.CustomerInfo;
@@ -38,7 +39,7 @@ public record SaleView(Long id, Long internalNumber, String receiptNumber, SaleT
     }
 
     public static SaleView from(Sale sale, CustomerInfo customer, List<ReturnRef> returns, CreditNoteRef creditNote,
-                                Map<Long, String> creditNoteNumbers) {
+                                Map<Long, String> creditNoteNumbers, Function<Long, String> serialModes) {
         Objects.requireNonNull(customer, "the customer of the sale is required");
         return new SaleView(sale.getId(), sale.getInternalNumber(), sale.getReceiptNumber(), sale.getType(),
                 sale.getDocumentType(), sale.getStatus(), sale.getBranchId(), sale.getCashRegisterId(),
@@ -49,7 +50,7 @@ public record SaleView(Long id, Long internalNumber, String receiptNumber, SaleT
                 sale.getFiscalStatus(), sale.getPaidAt(), sale.getSyncedAt(), sale.getCreatedAt(),
                 sale.getOriginalSaleId(), sale.getOriginalReceiptNumber(), sale.getReason(), sale.getRefundMethod(),
                 returns, creditNote,
-                sale.getLines().stream().map(line -> SaleLineView.from(line)).toList(),
+                sale.getLines().stream().map(line -> SaleLineView.from(line, serialModes)).toList(),
                 sale.getPayments().stream().map(payment -> PaymentView.from(payment, creditNoteNumbers)).toList());
     }
 }

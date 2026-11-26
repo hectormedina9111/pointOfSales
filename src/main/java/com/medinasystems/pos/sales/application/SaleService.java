@@ -51,6 +51,7 @@ import com.medinasystems.pos.sales.domain.PricedLine;
 import com.medinasystems.pos.sales.domain.ReceiptCounter;
 import com.medinasystems.pos.sales.domain.Sale;
 import com.medinasystems.pos.sales.domain.SaleCalculator;
+import com.medinasystems.pos.sales.domain.SaleLine;
 import com.medinasystems.pos.sales.domain.SaleContext;
 import com.medinasystems.pos.sales.domain.SaleOrder;
 import com.medinasystems.pos.sales.domain.SaleStatus;
@@ -60,6 +61,7 @@ import com.medinasystems.pos.shared.SerialNumbers;
 import com.medinasystems.pos.sales.infrastructure.CreditNoteRepository;
 import com.medinasystems.pos.sales.infrastructure.PaymentMethodRepository;
 import com.medinasystems.pos.sales.infrastructure.ReceiptCounterRepository;
+import com.medinasystems.pos.sales.infrastructure.SaleLineSerialRepository;
 import com.medinasystems.pos.sales.infrastructure.SaleRepository;
 import com.medinasystems.pos.sales.infrastructure.SaleSpecifications;
 import com.medinasystems.pos.security.ActionAuthorizer;
@@ -108,6 +110,8 @@ public class SaleService {
     private final ApplicationEventPublisher events;
     private final CentralCreditNotes centralCredits;
     private final Clock clock;
+    private final SerialModes serialModes;
+    private final SaleLineSerialRepository serialLines;
 
     public SaleService(SaleRepository sales, CreditNoteRepository creditNotes, PaymentMethodRepository methods,
                        ReceiptCounterRepository counters,
@@ -116,7 +120,9 @@ public class SaleService {
                        CashRegisterDirectory registers, UserDirectory users, ActionAuthorizer authorizer,
                        BranchScope scope, SalesProperties properties, Outbox outbox,
                        AuditorAware<String> auditor, ApplicationEventPublisher events, CentralCreditNotes centralCredits,
-                       Clock clock) {
+                       Clock clock, SerialModes serialModes, SaleLineSerialRepository serialLines) {
+        this.serialModes = serialModes;
+        this.serialLines = serialLines;
         this.sales = sales;
         this.creditNotes = creditNotes;
         this.methods = methods;
@@ -151,7 +157,7 @@ public class SaleService {
         SaleTotals totals = price(data.lines(), Discount.of(data.discountType(), data.discountValue()),
                 storeBranchId(), customer, false);
         return SaleQuoteView.from(totals, needsAuthorization(totals.exceedsMaxDiscount(), DISCOUNT_PRIVILEGE, userId),
-                needsAuthorization(overridesPrice(totals), PRICE_PRIVILEGE, userId));
+                needsAuthorization(overridesPrice(totals), PRICE_PRIVILEGE, userId), serialModes::of);
     }
 
     /**
@@ -332,6 +338,7 @@ public class SaleService {
         }
 
         Sale sale = prepare.apply(session);
+        requireSerialsNotSold(sale);
         List<PaymentDraft> drafts = paymentDrafts(payments);
         BigDecimal change = PaymentRules.check(sale.getTotal(), drafts);
         // Local checks passed: the credit notes are taken at the central node, before anything is saved.
@@ -344,6 +351,28 @@ public class SaleService {
         outbox.enqueue(SaleDocument.EVENT_TYPE, SaleDocument.of(saved));
         events.publishEvent(new SalePaid(saved.getId(), saved.getBranchId(), userId, paidLines(saved)));
         return new SaleResult(view(saved), true);
+    }
+
+    /**
+     * A serial number of a MANUAL product sold by a charged sale and not returned yet cannot be sold again. The units of a
+     * LIST product are checked by the inventory when the sale moves stock.
+     *
+     * @throws BusinessRuleException SERIAL_ALREADY_SOLD with the serial number
+     */
+    private void requireSerialsNotSold(Sale sale) {
+        for (SaleLine line : sale.getLines()) {
+            List<String> numbers = line.getSerialNumbers();
+            boolean manual = products.find(line.getProductId()).map(SaleableProduct::isSerialManual).orElse(false);
+            if (numbers.isEmpty() || !manual) {
+                continue;
+            }
+            List<String> sold = serialLines.findSoldNumbers(line.getProductId(), numbers, SaleType.SALE,
+                    DefaultSaleSerials.CHARGED);
+            if (!sold.isEmpty()) {
+                throw new BusinessRuleException("SERIAL_ALREADY_SOLD", "The serial number {0} was already sold",
+                        sold.get(0));
+            }
+        }
     }
 
     /** The lines of a charged sale, with their ids, for the modules that move stock. */
@@ -389,7 +418,7 @@ public class SaleService {
      */
     private static List<String> serialsOf(SaleableProduct product, SaleData.Line line, boolean required,
                                           Map<Long, Set<String>> sold) {
-        if (!product.tracksSerials()) {
+        if (!product.hasSerials()) {
             return List.of();
         }
         List<String> serials = SerialNumbers.normalize(line.serialNumbers());
@@ -508,7 +537,8 @@ public class SaleService {
                 .map(note -> new SaleView.CreditNoteRef(note.getId(), note.getNumber(), note.getAmount(),
                         note.getBalance()))
                 .orElse(null);
-        return SaleView.from(sale, findCustomer(sale.getCustomerId()), returns, creditNote, creditNoteNumbers(sale));
+        return SaleView.from(sale, findCustomer(sale.getCustomerId()), returns, creditNote, creditNoteNumbers(sale),
+                serialModes::of);
     }
 
     /** The numbers of the credit notes that a sale was paid with, by note id. */

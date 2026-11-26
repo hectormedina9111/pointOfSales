@@ -69,8 +69,9 @@ public class Product extends AuditableEntity {
     @Column(name = "tracks_inventory", nullable = false)
     private boolean tracksInventory = true;
 
-    @Column(name = "tracks_serials", nullable = false)
-    private boolean tracksSerials;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "serial_mode", nullable = false, length = 10)
+    private SerialMode serialMode = SerialMode.NONE;
 
     @Column(name = "requires_exclusive_invoice", nullable = false)
     private boolean requiresExclusiveInvoice;
@@ -124,17 +125,18 @@ public class Product extends AuditableEntity {
             requireActiveUnit(d.unitOfMeasure());
         }
 
+        SerialMode mode = d.serialMode() == null ? SerialMode.NONE : d.serialMode();
         boolean service = d.productType() == ProductType.SERVICE;
-        if (service && d.tracksSerials()) {
+        if (service && mode.hasSerials()) {
             throw new BusinessRuleException("SERVICE_WITH_SERIALS", "A service cannot track serial numbers");
         }
         // Un servicio nunca mueve inventario: el valor se fuerza a false en lugar de rechazarse.
         boolean inventory = !service && d.tracksInventory();
-        if (d.tracksSerials() && !inventory) {
+        if (mode.hasSerials() && !inventory) {
             throw new BusinessRuleException("SERIALS_REQUIRE_INVENTORY",
                     "Serial numbers require tracking inventory");
         }
-        if (d.tracksSerials() && d.unitOfMeasure().isAllowsDecimals()) {
+        if (mode.hasSerials() && d.unitOfMeasure().isAllowsDecimals()) {
             throw new BusinessRuleException("SERIALS_REQUIRE_WHOLE_UNIT",
                     "Serial numbers require a unit without decimals");
         }
@@ -158,7 +160,7 @@ public class Product extends AuditableEntity {
         this.cost = unitCost;
         this.productType = d.productType();
         this.tracksInventory = inventory;
-        this.tracksSerials = d.tracksSerials();
+        this.serialMode = mode;
         this.requiresExclusiveInvoice = d.requiresExclusiveInvoice();
         this.minStock = stock;
         this.imageUrl = d.imageUrl();
@@ -252,8 +254,8 @@ public class Product extends AuditableEntity {
         return tracksInventory;
     }
 
-    public boolean isTracksSerials() {
-        return tracksSerials;
+    public SerialMode getSerialMode() {
+        return serialMode;
     }
 
     public boolean isRequiresExclusiveInvoice() {

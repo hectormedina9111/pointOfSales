@@ -1,6 +1,7 @@
 package com.medinasystems.pos.sales.application;
 
 import java.util.List;
+import java.util.function.Function;
 
 import com.medinasystems.pos.sales.domain.SaleTotals;
 
@@ -13,8 +14,8 @@ public record SaleQuoteView(List<SaleLineView> lines, SaleTotalsView totals, boo
                             boolean priceAuthorizationRequired) {
 
     public static SaleQuoteView from(SaleTotals totals, boolean discountAuthorizationRequired,
-                                     boolean priceAuthorizationRequired) {
-        return new SaleQuoteView(totals.lines().stream().map(line -> SaleLineView.from(line)).toList(),
+                                     boolean priceAuthorizationRequired, Function<Long, String> serialModes) {
+        return new SaleQuoteView(totals.lines().stream().map(line -> SaleLineView.from(line, serialModes)).toList(),
                 SaleTotalsView.from(totals), discountAuthorizationRequired, priceAuthorizationRequired);
     }
 }

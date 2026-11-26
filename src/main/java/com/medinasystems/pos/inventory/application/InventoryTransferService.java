@@ -264,8 +264,8 @@ public class InventoryTransferService {
                 throw new BusinessRuleException("RECEIVED_EXCEEDS_SENT", "More units were received than were sent");
             }
             List<String> serials = SerialNumbers.normalize(input.serialNumbers());
-            boolean tracks = products.find(line.getProductId()).map(SaleableProduct::tracksSerials).orElse(false);
-            if (tracks) {
+            SaleableProduct product = products.find(line.getProductId()).orElse(null);
+            if (product != null && product.isSerialList()) {
                 SerialNumbers.requireWhole(quantity);
                 SerialNumbers.requireCount(quantity, serials.size());
                 Set<String> sent = line.getSerials().stream().map(InventoryTransferSerial::getSerialNumber)
@@ -277,6 +277,11 @@ public class InventoryTransferService {
                     }
                 }
             } else if (!serials.isEmpty()) {
+                // A MANUAL product moves by quantity in a transfer: its serials are not part of the stock.
+                if (product != null && product.hasSerials()) {
+                    throw new BusinessRuleException("SERIALS_NOT_ALLOWED",
+                            "The product does not take serial numbers in stock movements");
+                }
                 throw new BusinessRuleException("SERIAL_NOT_EXPECTED", "The product does not track serial numbers");
             }
             receipts.add(new Receipt(line, quantity, serials));
@@ -321,9 +326,12 @@ public class InventoryTransferService {
         }
     }
 
-    /** The serial numbers of a line when the product tracks them; none for any other product. */
+    /**
+     * The serial numbers of a line when the product has serial numbers; none for NONE. A MANUAL product passes its
+     * serials on so the ledger refuses them (SERIALS_NOT_ALLOWED): its transfers move by quantity.
+     */
     private List<String> serialsToTrack(long productId, List<String> serialNumbers) {
-        boolean tracks = products.find(productId).map(SaleableProduct::tracksSerials).orElse(false);
+        boolean tracks = products.find(productId).map(SaleableProduct::hasSerials).orElse(false);
         return tracks ? SerialNumbers.normalize(serialNumbers) : List.of();
     }
 

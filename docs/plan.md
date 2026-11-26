@@ -508,7 +508,7 @@ Cómo se usa: los privilegios ENDPOINT se cargan como autoridades de Spring Secu
 | price\_includes\_tax | BOOLEAN | NOT NULL, DEFAULT true | true por decisión del negocio: el precio ya trae ISV y la base se calcula hacia atrás |
 | cost | NUMERIC(14,2) | CHECK ≥ 0 | Para utilidad bruta |
 | tracks\_inventory | BOOLEAN | NOT NULL, DEFAULT true | false para servicios |
-| tracks\_serials | BOOLEAN | NOT NULL, DEFAULT false | Exige un serial por unidad; requiere unidad sin decimales y tracks\_inventory = true |
+| serial\_mode | VARCHAR(10) | NOT NULL, DEFAULT NONE, CHECK NONE, MANUAL o LIST | NONE: sin serie. MANUAL: un serial por unidad escrito en la venta. LIST: equipos cargados antes. MANUAL y LIST exigen unidad sin decimales y tracks\_inventory = true |
 | requires\_exclusive\_invoice | BOOLEAN | NOT NULL, DEFAULT false | true = se factura solo; la venta no admite otros productos |
 | min\_stock | NUMERIC(12,3) | DEFAULT 0 | Umbral de alerta |
 | image\_url | VARCHAR(300) |  |  |
@@ -1103,8 +1103,8 @@ Endpoints de tiendas y sincronización:
 
 - `sku` y `barcode` son únicos; el código de barras es opcional.
 - Todo producto necesita impuesto y unidad de medida activos.
-- Un `SERVICE` siempre tiene `tracks_inventory = false` y `tracks_serials = false`.
-- `tracks_serials = true` exige `tracks_inventory = true` y una unidad sin decimales.
+- Un `SERVICE` siempre tiene `tracks_inventory = false` y `serial_mode = NONE`.
+- `serial_mode` distinto de `NONE` exige `tracks_inventory = true` y una unidad sin decimales.
 - `sale_price` y `cost` no pueden ser negativos; el precio siempre incluye ISV.
 - Los productos no se borran: DELETE los desactiva. Un producto inactivo no aparece en búsquedas de venta, pero sí en consultas históricas.
 - Cambiar precio o costo deja registro en `audit_log` con el valor anterior y el nuevo.
@@ -1554,6 +1554,21 @@ El responsable definió el concepto de **equipo** (como en SAP): una unidad con 
 - **Movimientos:** ventas, devoluciones, salidas y **transferencias mueven los equipos con sus características**; al recibir una transferencia, la tienda destino crea el equipo con su serie, código externo y características.
 - **Consulta y corrección:** listado de equipos con filtros y paginación en el servidor, detalle con características, código externo y bitácora; el nodo que opera la sucursal puede corregir características y código externo.
 - `external_code` existe ahora en `app_user`, `customer` y `product_serial` (equipos).
+
+### Tres configuraciones de serie del producto (decisión del 25 de noviembre de 2026)
+
+El producto define cómo maneja la serie (`product.serial_mode`, reemplaza a `tracks_serials`):
+
+| Configuración | Inventario | Al facturar | Devolución y transferencia |
+| --- | --- | --- | --- |
+| **Sin serie** (`NONE`) | Por cantidad | Solo cantidad | Por cantidad |
+| **Serie manual** (`MANUAL`) | Por cantidad; la entrada general no pide series | El cajero escribe o escanea una serie por unidad; queda en la venta (`sale_line_serial`) | Se eligen las series vendidas que vuelven; la existencia vuelve por cantidad. La transferencia va por cantidad |
+| **Serie de lista** (`LIST`) | Por equipo, cargado antes en Carga de equipos (características y código externo) | Solo se eligen o escanean equipos disponibles en la sucursal | El equipo vuelve disponible; la transferencia mueve los equipos |
+
+- Los productos que tenían `tracks_serials = true` pasan a `LIST`.
+- `MANUAL` y `LIST` exigen `tracks_inventory = true` y unidad sin decimales; un servicio siempre es `NONE`.
+- En `MANUAL` no se puede facturar una serie que ya esté vendida y sin devolver para el mismo producto (`SERIAL_ALREADY_SOLD`). No lleva características ni código externo.
+- La búsqueda de equipos y series también encuentra las series manuales por su venta.
 
 ### Pendientes conocidos del inventario
 
@@ -2495,3 +2510,24 @@ El bodeguero recibe estos privilegios y el menú `MENU_INVENTORY_TRANSFERS` ("Tr
 - Cambiar las opciones de una lista no revisa los valores ya guardados.
 - Las características de una plantilla desactivada no se muestran etiquetadas en el detalle (la lectura usa solo la plantilla activa).
 - Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (inventario → catálogo sin ciclos) y el CI quedan para verificar.
+
+### Decisiones de implementación: inventario paso 11 (configuraciones de serie)
+
+**Migración V25.** `product.serial_mode` (NONE, MANUAL, LIST) reemplaza a `tracks_serials`. Los productos con `tracks_serials = true` pasan a LIST. Las reglas CHECK se recrean sobre `serial_mode` antes de quitar la columna. La réplica no lista columnas (lee `information_schema` y `row_to_json`), así que no cambia.
+
+**Catálogo.** `SerialMode` (dominio). La petición acepta `serialMode`; la vista lo devuelve y conserva `tracksSerials`, que es `serialMode == LIST`, solo para que la interfaz siga funcionando durante la transición. `SaleableProduct` expone `serialMode` (texto) con los métodos `hasSerials()`, `isSerialList()` e `isSerialManual()`. Las reglas de servicio, inventario y unidad sin decimales se aplican a `serialMode <> NONE` con los mismos códigos.
+
+**Existencias (ledger).** Los movimientos de un producto LIST siguen igual. Un producto MANUAL se mueve por cantidad entera, como uno sin serie, y cualquier serial enviado en un documento, transferencia o conteo responde `SERIALS_NOT_ALLOWED`. El listener de ventas y devoluciones pasa seriales al ledger solo para LIST; para MANUAL ignora los seriales de la venta. Los documentos generales, la carga de equipos y las transferencias usan `isSerialList()` donde antes decían `tracksSerials`.
+
+**Ventas.** Un producto MANUAL o LIST exige un serial por unidad al guardar en espera y al cobrar (`serialsOf` usa `hasSerials()`). Solo en MANUAL, al cobrar, se revisa en `sale_line_serial` que el serial no esté vendido y sin devolver en otra venta cobrada del mismo producto (`SERIAL_ALREADY_SOLD`). Las devoluciones eligen seriales vendidos para MANUAL y LIST. `SaleLineView`, `SaleView`, `SaleQuoteView` y `ReturnableView.Line` llevan `serialMode`, que se resuelve en el momento de la vista (no se guarda en la línea). `ReturnableView.Line.tracksSerials` es `serialMode != NONE`.
+
+**Búsqueda de seriales.** La API pública `SaleSerials.manualSerialSales(serialNumber)` (módulo ventas) devuelve las ventas de productos MANUAL con ese serial, sin distinguir mayúsculas, con su recibo, fecha, sucursal y si ya volvió. Inventario la agrega a `GET /api/v1/serials` con `source = SALE`, `status = SOLD` o `RETURNED`, sin id, características ni movimientos. Las entradas de equipos llevan `source = EQUIPMENT`. `SerialTraceView.status` pasa de enumeración a texto, con los mismos valores que antes para los equipos. Ventas no conoce a inventario: la dependencia sigue siendo solo inventario → ventas.
+
+**Desviaciones.**
+- `manualSerialSales` devuelve también `branchId`, para que cada tienda vea solo sus ventas; el dato viene de la misma consulta.
+- La entrada de una venta MANUAL muestra el serial tal como lo escribió quien busca, no como quedó guardado en mayúsculas o minúsculas.
+- Una línea vendida antes de este paso, de un producto MANUAL o LIST, sin filas de serial, se devuelve sin serial, como antes (limitación ya conocida del paso 3).
+
+**Pendiente.**
+- Sin compilar ni probar en esta sesión: `./mvnw verify`, la prueba de Spring Modulith (ventas sin ciclo con inventario) y el CI quedan para verificar.
+- El cambio de un producto de MANUAL a NONE o a LIST con ventas ya hechas no revisa esas ventas.

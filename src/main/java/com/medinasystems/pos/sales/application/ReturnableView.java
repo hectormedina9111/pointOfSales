@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 import com.medinasystems.pos.sales.domain.Payment;
 import com.medinasystems.pos.sales.domain.OrderType;
@@ -34,7 +35,7 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
      */
     public static ReturnableView of(Sale sale, boolean sameDay, String customerName, String branchName, boolean foreign,
                                     Map<Long, BigDecimal> refundedByLine, Map<String, BigDecimal> refundedByMethod,
-                                    Map<Long, BigDecimal> held) {
+                                    Map<Long, BigDecimal> held, Function<Long, String> serialModes) {
         Map<String, BigDecimal> paid = new LinkedHashMap<>();
         Map<String, String> names = new LinkedHashMap<>();
         for (Payment payment : sale.getPayments()) {
@@ -50,7 +51,8 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
         }
         List<Line> lines = new ArrayList<>();
         for (SaleLine line : sale.getLines()) {
-            ReturnSourceLine source = ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO));
+            ReturnSourceLine source = ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO),
+                    serialModes.apply(line.getProductId()));
             lines.add(Line.of(source, refundedByLine.getOrDefault(line.getId(), BigDecimal.ZERO)));
         }
         List<RefundMethod> allowed = sameDay
@@ -93,21 +95,22 @@ public record ReturnableView(Long saleId, String receiptNumber, Long customerId,
                        BigDecimal returnedQuantity, BigDecimal returnableQuantity, BigDecimal netTotal,
                        BigDecimal refundedAmount, BigDecimal unitPrice, BigDecimal unitCost, String taxCode,
                        BigDecimal taxRate, BigDecimal listPrice, Long priceListId, boolean priceOverridden,
-                       boolean tracksSerials, List<String> serialNumbers, List<String> returnableSerialNumbers) {
+                       boolean tracksSerials, List<String> serialNumbers, List<String> returnableSerialNumbers,
+                       String serialMode) {
 
-        /** The line as a return copies it. */
+        /** The line as a return copies it. A line tracks serials when it sold some (see {@link ReturnSourceLine}). */
         public ReturnSourceLine toSource() {
             return new ReturnSourceLine(saleLineId, productId, sku, productName, quantity, returnedQuantity,
                     returnableQuantity, netTotal, unitPrice, unitCost, taxCode, taxRate, listPrice, priceListId,
-                    priceOverridden, tracksSerials, serialNumbers, returnableSerialNumbers);
+                    priceOverridden, !serialNumbers.isEmpty(), serialNumbers, returnableSerialNumbers, serialMode);
         }
 
         static Line of(ReturnSourceLine source, BigDecimal refunded) {
             return new Line(source.id(), source.productId(), source.description(), source.sku(), source.quantity(),
                     source.returnedQuantity(), source.returnableQuantity(), source.total(), refunded,
                     source.unitPrice(), source.unitCost(), source.taxCode(), source.taxRate(), source.listPrice(),
-                    source.priceListId(), source.priceOverridden(), source.tracksSerials(), source.serialNumbers(),
-                    source.returnableSerialNumbers());
+                    source.priceListId(), source.priceOverridden(), !"NONE".equals(source.serialMode()),
+                    source.serialNumbers(), source.returnableSerialNumbers(), source.serialMode());
         }
     }
 }

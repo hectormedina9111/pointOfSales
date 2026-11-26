@@ -142,7 +142,7 @@ public class InventoryDocumentService {
         BranchInfo branch = branches.operated(branchId);
         SaleableProduct product = products.find(load.productId())
                 .orElseThrow(() -> new BusinessRuleException("PRODUCT_NOT_FOUND", "The product does not exist"));
-        if (!product.tracksSerials()) {
+        if (!product.isSerialList()) {
             throw new BusinessRuleException("PRODUCT_NOT_SERIALIZED", "The product does not track serial numbers");
         }
         Map<String, EquipmentUnit> equipment = equipmentRules.check(product, load.equipment());
@@ -202,7 +202,7 @@ public class InventoryDocumentService {
         }
         for (LineData line : data.lines()) {
             Optional<SaleableProduct> product = products.find(line.productId());
-            if (product.isEmpty() || !product.get().tracksSerials()) {
+            if (product.isEmpty() || !product.get().isSerialList()) {
                 continue;
             }
             if (data.type() == InventoryDocumentType.ENTRY) {

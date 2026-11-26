@@ -28,6 +28,7 @@ import com.medinasystems.pos.inventory.infrastructure.ProductSerialSpecification
 import com.medinasystems.pos.inventory.infrastructure.InventoryTransferRepository;
 import com.medinasystems.pos.organization.BranchDirectory;
 import com.medinasystems.pos.sales.SaleReceipts;
+import com.medinasystems.pos.sales.SaleSerials;
 import com.medinasystems.pos.security.UserDirectory;
 import com.medinasystems.pos.shared.BranchScope;
 import com.medinasystems.pos.shared.ResourceNotFoundException;
@@ -52,13 +53,15 @@ public class SerialQueryService {
     private final SaleableProducts products;
     private final SaleReceipts receipts;
     private final InventoryTransferRepository transfers;
+    private final SaleSerials saleSerials;
 
     public SerialQueryService(ProductSerialRepository units, InventoryMovementSerialRepository links,
                               InventoryMovementRepository movements, InventoryDocumentRepository documents,
                               BranchScope scope, BranchDirectory branchDirectory, UserDirectory users,
                               SaleableProducts products, SaleReceipts receipts,
-                              InventoryTransferRepository transfers) {
+                              InventoryTransferRepository transfers, SaleSerials saleSerials) {
         this.transfers = transfers;
+        this.saleSerials = saleSerials;
         this.units = units;
         this.links = links;
         this.movements = movements;
@@ -91,8 +94,9 @@ public class SerialQueryService {
     }
 
     /**
-     * Every unit with this serial number (without regard to case), with its last sale and its movements. A blank serial
-     * number finds nothing.
+     * Every unit with this serial number (without regard to case): the equipment of products with serial mode LIST, with
+     * its last sale and its movements, and the sales of products with serial mode MANUAL. A blank serial number finds
+     * nothing.
      */
     public List<SerialTraceView> trace(String serialNumber, Long productId) {
         if (serialNumber == null || serialNumber.isBlank()) {
@@ -102,8 +106,15 @@ public class SerialQueryService {
         if (visible.nothing()) {
             return List.of();
         }
+        List<SerialTraceView> views = new ArrayList<>(equipmentTrace(serialNumber.trim(), productId, visible));
+        views.addAll(manualSaleTrace(serialNumber.trim(), productId, visible));
+        return views;
+    }
+
+    /** The equipment units with this serial number in the visible branches, each with its movements. */
+    private List<SerialTraceView> equipmentTrace(String serialNumber, Long productId, Visible visible) {
         List<ProductSerial> found = units.findAll(
-                ProductSerialSpecifications.trace(serialNumber.trim(), productId, visible.branchId()));
+                ProductSerialSpecifications.trace(serialNumber, productId, visible.branchId()));
         if (found.isEmpty()) {
             return List.of();
         }
@@ -136,10 +147,31 @@ public class SerialQueryService {
                 }
             }
             views.add(new SerialTraceView(unit.getId(), unit.getProductId(), names.productSku(unit.getProductId()),
-                    names.productName(unit.getProductId()), unit.getSerialNumber(), unit.getStatus(),
+                    names.productName(unit.getProductId()), unit.getSerialNumber(), unit.getStatus().name(),
                     unit.getBranchId(), names.branchName(unit.getBranchId()), unit.getReceivedAt(), unit.getSoldAt(),
                     unit.getLastSaleId(), unit.getLastSaleId() == null ? null : receiptNumbers.get(unit.getLastSaleId()),
-                    unit.getExternalCode(), unit.getAttributes(), trail));
+                    unit.getExternalCode(), unit.getAttributes(), trail, SerialTraceView.SOURCE_EQUIPMENT));
+        }
+        return views;
+    }
+
+    /**
+     * The sales of MANUAL products with this serial number, in the branches the node sees. The status is SOLD, or RETURNED
+     * once the unit came back. The sale knows nothing else about the unit, so the entry has no id or movements.
+     */
+    private List<SerialTraceView> manualSaleTrace(String serialNumber, Long productId, Visible visible) {
+        InventoryNames names = names();
+        List<SerialTraceView> views = new ArrayList<>();
+        for (SaleSerials.ManualSerialSale sale : saleSerials.manualSerialSales(serialNumber)) {
+            boolean sameProduct = productId == null || sale.productId() == productId;
+            boolean sameBranch = visible.branchId() == null || sale.branchId() == visible.branchId();
+            if (!sameProduct || !sameBranch) {
+                continue;
+            }
+            views.add(new SerialTraceView(null, sale.productId(), names.productSku(sale.productId()),
+                    names.productName(sale.productId()), serialNumber, sale.returned() ? "RETURNED" : "SOLD",
+                    sale.branchId(), names.branchName(sale.branchId()), null, sale.soldAt(), sale.saleId(),
+                    sale.receiptNumber(), null, Map.of(), List.of(), SerialTraceView.SOURCE_SALE));
         }
         return views;
     }

@@ -92,12 +92,14 @@ public class SaleReturnService {
     private final Outbox outbox;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final SerialModes serialModes;
 
     public SaleReturnService(SaleService service, SaleRepository sales, SaleLineRepository lines,
                              PaymentRepository payments, CreditNoteRepository creditNotes, CompanyDirectory companies,
                              BranchDirectory branches, SaleReturnClaimRepository claims, CentralReturns central,
                              ActionAuthorizer authorizer, BranchScope scope, Outbox outbox,
-                             ApplicationEventPublisher events, Clock clock) {
+                             ApplicationEventPublisher events, Clock clock, SerialModes serialModes) {
+        this.serialModes = serialModes;
         this.service = service;
         this.sales = sales;
         this.lines = lines;
@@ -278,7 +280,7 @@ public class SaleReturnService {
         CustomerInfo customer = service.findCustomer(sale.getCustomerId());
         return ReturnableView.of(sale, sameDay(sale.getPaidAt(), zone()), customer.displayName(),
                 branchName(sale.getBranchId()), false, refundedByLine(sale.getId()), refundedByMethod(sale.getId()),
-                held(sale.getId()));
+                held(sale.getId()), serialModes::of);
     }
 
     /** The view of a sale of another branch, from the central node. The store decides the same-day rule itself. */
@@ -335,7 +337,8 @@ public class SaleReturnService {
     private List<ReturnSourceLine> sourceLines(Sale sale) {
         Map<Long, BigDecimal> held = held(sale.getId());
         return sale.getLines().stream()
-                .map(line -> ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO)))
+                .map(line -> ReturnSourceLine.of(line, held.getOrDefault(line.getId(), BigDecimal.ZERO),
+                        serialModes.of(line.getProductId())))
                 .toList();
     }
 
