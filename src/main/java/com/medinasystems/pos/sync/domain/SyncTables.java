@@ -21,6 +21,7 @@ public final class SyncTables {
             SyncTable.main("app_user"),
             SyncTable.main("branch"),
             SyncTable.main("category"),
+            SyncTable.main("category_attribute"),
             SyncTable.main("unit_of_measure"),
             SyncTable.main("tax"),
             SyncTable.main("product"),
