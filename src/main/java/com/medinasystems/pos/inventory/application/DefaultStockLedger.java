@@ -224,7 +224,7 @@ public class DefaultStockLedger implements StockLedger {
             ProductSerial row = rows.get(number);
             if (incoming) {
                 if (row == null) {
-                    row = serialUnits.save(new ProductSerial(product.id(), number, branch.branchId(), now));
+                    row = serialUnits.save(new ProductSerial(product.id(), product.categoryId(), number, branch.branchId(), now));
                 }
                 row.enter(branch.branchId(), now, moved.id());
             } else if (type == StockMovementType.SALE_OUT) {
@@ -277,7 +277,7 @@ public class DefaultStockLedger implements StockLedger {
             for (String number : entering) {
                 ProductSerial row = rows.get(number);
                 if (row == null) {
-                    row = serialUnits.save(new ProductSerial(product.id(), number, branch.branchId(), now));
+                    row = serialUnits.save(new ProductSerial(product.id(), product.categoryId(), number, branch.branchId(), now));
                 }
                 row.enter(branch.branchId(), now, in.id());
                 serialLinks.save(new InventoryMovementSerial(in.id(), row.getId()));

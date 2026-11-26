@@ -6,6 +6,7 @@ import static com.medinasystems.pos.sync.UploadPayload.instant;
 import static com.medinasystems.pos.sync.UploadPayload.longField;
 import static com.medinasystems.pos.sync.UploadPayload.optionalInstant;
 import static com.medinasystems.pos.sync.UploadPayload.optionalLong;
+import static com.medinasystems.pos.sync.UploadPayload.optionalText;
 import static com.medinasystems.pos.sync.UploadPayload.text;
 
 import java.math.BigDecimal;
@@ -52,11 +53,18 @@ final class InventoryUploadWriter {
             + " WHERE inventory_item.last_movement_at IS NULL"
             + " OR inventory_item.last_movement_at < EXCLUDED.last_movement_at";
 
-    static final String SERIAL_INSERT_SQL = "INSERT INTO product_serial (id, product_id, serial_number, branch_id, status,"
-            + " received_at, sold_at, last_sale_id, entry_movement_id, synced_at, created_at, created_by, updated_at,"
-            + " updated_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
+    /**
+     * The equipment data of a unit are kept when the upload carries none: a unit that came back from a store that never
+     * edited it (or that was created by a return, which has no characteristics) must not erase what the central knows.
+     */
+    static final String SERIAL_INSERT_SQL = "INSERT INTO product_serial (id, product_id, category_id, serial_number,"
+            + " branch_id, status, received_at, sold_at, last_sale_id, entry_movement_id, synced_at, external_code,"
+            + " attributes, created_at, created_by, updated_at, updated_by, version)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, 0)";
     static final String SERIAL_UPDATE_SQL = "UPDATE product_serial SET branch_id = ?, status = ?, received_at = ?,"
             + " sold_at = ?, last_sale_id = ?, entry_movement_id = ?, synced_at = COALESCE(synced_at, ?),"
+            + " category_id = COALESCE(?, category_id), external_code = COALESCE(?, external_code),"
+            + " attributes = CASE WHEN ?::jsonb = '{}'::jsonb THEN attributes ELSE ?::jsonb END,"
             + " updated_at = ?, updated_by = ?, version = version + 1 WHERE id = ?";
     static final String SERIAL_LINK_SQL = "INSERT INTO inventory_movement_serial (id, movement_id, serial_id, created_at,"
             + " created_by, updated_at, updated_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, 0)";
@@ -97,10 +105,11 @@ final class InventoryUploadWriter {
                     "SELECT id, updated_at FROM product_serial WHERE product_id = ? AND serial_number = ?",
                     unit.productId(), unit.serialNumber());
             if (stored.isEmpty()) {
-                jdbc.update(SERIAL_INSERT_SQL, unit.id(), unit.productId(), unit.serialNumber(), unit.branchId(),
-                        unit.status().name(), Timestamp.from(unit.receivedAt()), timestamp(unit.soldAt()),
-                        unit.lastSaleId(), unit.entryMovementId(), received, received,
-                        createdBy, Timestamp.from(unit.updatedAt()), updatedBy);
+                jdbc.update(SERIAL_INSERT_SQL, unit.id(), unit.productId(), unit.categoryId(), unit.serialNumber(),
+                        unit.branchId(), unit.status().name(), Timestamp.from(unit.receivedAt()),
+                        timestamp(unit.soldAt()), unit.lastSaleId(), unit.entryMovementId(), received,
+                        unit.externalCode(), unit.attributesJson(), received, createdBy,
+                        Timestamp.from(unit.updatedAt()), updatedBy);
                 ids.put(unit.id(), unit.id());
                 continue;
             }
@@ -110,6 +119,7 @@ final class InventoryUploadWriter {
             if (unit.updatedAt().isAfter(storedAt)) {
                 jdbc.update(SERIAL_UPDATE_SQL, unit.branchId(), unit.status().name(), Timestamp.from(unit.receivedAt()),
                         timestamp(unit.soldAt()), unit.lastSaleId(), unit.entryMovementId(), received,
+                        unit.categoryId(), unit.externalCode(), unit.attributesJson(), unit.attributesJson(),
                         Timestamp.from(unit.updatedAt()), updatedBy, storedId);
             }
         }
@@ -161,10 +171,13 @@ final class InventoryUploadWriter {
     static List<Serial> serialsFrom(JsonNode payload) {
         List<Serial> serials = new ArrayList<>();
         for (JsonNode node : array(payload, "serials")) {
+            JsonNode attributes = node.get("attributes");
             serials.add(new Serial(longField(node, "id"), longField(node, "productId"), text(node, "serialNumber"),
                     longField(node, "branchId"), enumField(node, "status", SerialStatus.class),
                     instant(node, "receivedAt"), optionalInstant(node, "soldAt"), optionalLong(node, "lastSaleId"),
-                    optionalLong(node, "entryMovementId"), instant(node, "updatedAt"), text(node, "updatedBy")));
+                    optionalLong(node, "entryMovementId"), instant(node, "updatedAt"), text(node, "updatedBy"),
+                    optionalLong(node, "categoryId"), optionalText(node, "externalCode"),
+                    attributes == null || attributes.isNull() ? "{}" : attributes.toString()));
         }
         return serials;
     }
@@ -207,7 +220,8 @@ final class InventoryUploadWriter {
 
     /** A serial unit of a payload, with its state after the movements it took part in. */
     record Serial(long id, long productId, String serialNumber, long branchId, SerialStatus status, Instant receivedAt,
-                  Instant soldAt, Long lastSaleId, Long entryMovementId, Instant updatedAt, String updatedBy) {
+                  Instant soldAt, Long lastSaleId, Long entryMovementId, Instant updatedAt, String updatedBy,
+                  Long categoryId, String externalCode, String attributesJson) {
     }
 
     /** A link between a movement and the serial unit it moved. */

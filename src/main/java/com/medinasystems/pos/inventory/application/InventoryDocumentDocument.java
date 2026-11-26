@@ -3,6 +3,7 @@ package com.medinasystems.pos.inventory.application;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import com.medinasystems.pos.inventory.StockMovement;
 import com.medinasystems.pos.inventory.domain.InventoryDocument;
@@ -81,12 +82,14 @@ public record InventoryDocumentDocument(long id, String number, String type, lon
      */
     public record SerialDocument(long id, long productId, String serialNumber, long branchId, String status,
                                  String receivedAt, String soldAt, Long lastSaleId, Long entryMovementId,
-                                 String updatedAt, String updatedBy) {
+                                 String updatedAt, String updatedBy, Long categoryId, String externalCode,
+                                 Map<String, Object> attributes) {
 
         static SerialDocument of(ProductSerial unit) {
             return new SerialDocument(unit.getId(), unit.getProductId(), unit.getSerialNumber(), unit.getBranchId(),
                     unit.getStatus().name(), text(unit.getReceivedAt()), text(unit.getSoldAt()), unit.getLastSaleId(),
-                    unit.getEntryMovementId(), text(unit.getUpdatedAt()), unit.getUpdatedBy());
+                    unit.getEntryMovementId(), text(unit.getUpdatedAt()), unit.getUpdatedBy(), unit.getCategoryId(),
+                    unit.getExternalCode(), unit.getAttributes());
         }
     }
 
