@@ -1147,7 +1147,7 @@
           },
           "body": {
             "contentType": "application/json",
-            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"serialMode\": \"NONE\",\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
           },
           "requestVariables": []
         },
@@ -1166,7 +1166,7 @@
           },
           "body": {
             "contentType": "application/json",
-            "body": "{\n  \"sku\": \"INST01\",\n  \"barcode\": null,\n  \"name\": \"Instalación\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 500.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+            "body": "{\n  \"sku\": \"INST01\",\n  \"barcode\": null,\n  \"name\": \"Instalación\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 500.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"serialMode\": \"NONE\",\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
           },
           "requestVariables": []
         },
@@ -1332,7 +1332,7 @@
           },
           "body": {
             "contentType": "application/json",
-            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 26.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": \"7401005900012\",\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 26.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"serialMode\": \"NONE\",\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
           },
           "requestVariables": []
         },
@@ -2468,7 +2468,7 @@
           },
           "body": {
             "contentType": "application/json",
-            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": null,\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"tracksSerials\": false,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+            "body": "{\n  \"sku\": \"CC600\",\n  \"barcode\": null,\n  \"name\": \"Coca-Cola 600 ml\",\n  \"description\": \"Bebida gaseosa en botella de 600 ml\",\n  \"categoryId\": \"<<subcategoryId>>\",\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 25.0,\n  \"cost\": 16.5,\n  \"productType\": \"GOOD\",\n  \"tracksInventory\": true,\n  \"serialMode\": \"NONE\",\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": 12.0,\n  \"imageUrl\": null,\n  \"active\": true\n}"
           },
           "requestVariables": []
         },
@@ -2487,7 +2487,7 @@
           },
           "body": {
             "contentType": "application/json",
-            "body": "{\n  \"sku\": \"INST99\",\n  \"barcode\": null,\n  \"name\": \"Servicio con serie\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 100.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"tracksSerials\": true,\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
+            "body": "{\n  \"sku\": \"INST99\",\n  \"barcode\": null,\n  \"name\": \"Servicio con serie\",\n  \"description\": \"Instalación en sitio\",\n  \"categoryId\": null,\n  \"taxId\": \"<<taxId>>\",\n  \"unitOfMeasureId\": \"<<unitId>>\",\n  \"salePrice\": 100.0,\n  \"cost\": null,\n  \"productType\": \"SERVICE\",\n  \"tracksInventory\": false,\n  \"serialMode\": \"LIST\",\n  \"requiresExclusiveInvoice\": false,\n  \"minStock\": null,\n  \"imageUrl\": null,\n  \"active\": true\n}"
           },
           "requestVariables": []
         },
